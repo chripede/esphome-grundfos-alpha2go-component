@@ -13,9 +13,7 @@ The protocol comes from the Grundfos GO APK and the capture in `Lasse-source/esp
 
 ```yaml
 external_components:
-  - source:
-      type: local
-      path: components
+  - source: github://chrissnow/esphome-grundfos-alpha2go-component@main
     components: [grundfos_alpha2go]
 
 esp32_ble_tracker:

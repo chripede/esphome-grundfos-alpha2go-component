@@ -22,9 +22,12 @@ wifi:
   password: !secret wifi_password
 
 external_components:
-  - source:
-      type: local
-      path: components          # folder containing grundfos_alpha2go/
+  - source: github://chrissnow/esphome-grundfos-alpha2go-component@main
+    components: [grundfos_alpha2go]
+  # or locally:
+  # - source:
+  #     type: local
+  #     path: components
 
 esp32_ble_tracker:
 
