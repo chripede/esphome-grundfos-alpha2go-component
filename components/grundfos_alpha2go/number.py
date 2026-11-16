@@ -23,7 +23,7 @@ CONF_SETPOINT_SPEED = "setpoint_speed"
 
 
 def _setpoint(unit, icon, min_value, max_value, step):
-    # Grenzen sind Vorgaben; die tatsaechlichen Grenzen haengen vom Pumpentyp ab und koennen ueberschrieben werden
+    # Limits are defaults; the real limits depend on the pump type and can be overridden
     return number.number_schema(
         GrundfosSetpointNumber,
         unit_of_measurement=unit,
@@ -41,11 +41,11 @@ def _setpoint(unit, icon, min_value, max_value, step):
 CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(CONF_GRUNDFOS_ALPHA2GO_ID): cv.use_id(GrundfosAlpha2Go),
-        # Druck-Regelarten (Prop. Druck, Konstantdruck); bei AutoAdapt nur Anzeige
+        # Pressure control modes (proportional / constant pressure); display only under AutoAdapt
         cv.Optional(CONF_SETPOINT_HEAD): _setpoint(UNIT_METER, "mdi:arrow-collapse-up", 0.5, 6.0, 0.1),
-        # Konstanter Foerderstrom
+        # Constant flow
         cv.Optional(CONF_SETPOINT_FLOW): _setpoint(UNIT_CUBIC_METER_PER_HOUR, "mdi:waves-arrow-right", 0.1, 3.5, 0.1),
-        # Konstantdrehzahl
+        # Constant speed
         cv.Optional(CONF_SETPOINT_SPEED): _setpoint(UNIT_REVOLUTIONS_PER_MINUTE, "mdi:speedometer", 1000, 5500, 50),
     }
 )

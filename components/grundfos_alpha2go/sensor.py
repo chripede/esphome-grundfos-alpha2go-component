@@ -34,7 +34,7 @@ from esphome.const import (
 from . import GrundfosAlpha2Go
 
 DEPENDENCIES = ["ble_client"]
-# Bedienelemente (switch/select/number/button) werden im Hub-Code referenziert
+# Controls (switch/select/number/button) are referenced in the hub code
 AUTO_LOAD = ["binary_sensor", "text_sensor", "switch", "select", "number", "button"]
 
 CONF_DC_VOLTAGE = "dc_voltage"
@@ -144,14 +144,14 @@ CONFIG_SCHEMA = (
                 icon="mdi:timer-outline",
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
-            # Energiezaehler der Pumpe (Objekt 87/1, intern in J)
+            # Pump's own energy counter (object 87/1, internally in J)
             cv.Optional(CONF_ENERGY): sensor.sensor_schema(
                 unit_of_measurement=UNIT_KILOWATT_HOURS,
                 accuracy_decimals=3,
                 device_class=DEVICE_CLASS_ENERGY,
                 state_class=STATE_CLASS_TOTAL_INCREASING,
             ),
-            # Aus Objekt 86/7 (priorisierte Anforderung); Codes siehe README
+            # From object 86/7 (prioritised request); codes in README
             cv.Optional(CONF_OPERATION_MODE_SENSOR): sensor.sensor_schema(
                 accuracy_decimals=0,
                 icon="mdi:state-machine",
@@ -162,13 +162,13 @@ CONFIG_SCHEMA = (
                 icon="mdi:tune-variant",
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
-            # Rohwert in SI-Einheit (Pa bei Druck-, m3/s bei Durchfluss-Regelarten)
+            # Raw value in SI units (Pa for pressure, m3/s for flow control modes)
             cv.Optional(CONF_SETPOINT_SENSOR): sensor.sensor_schema(
                 accuracy_decimals=6,
                 icon="mdi:target",
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
-            # Sollwert als Foerderhoehe; NaN, wenn die Regelart keinen Drucksollwert hat
+            # Setpoint as head; NaN if the control mode has no pressure setpoint
             cv.Optional(CONF_SETPOINT_HEAD): sensor.sensor_schema(
                 unit_of_measurement=UNIT_METER,
                 accuracy_decimals=2,
@@ -176,7 +176,7 @@ CONFIG_SCHEMA = (
                 state_class=STATE_CLASS_MEASUREMENT,
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
-            # Sollwert als Durchfluss; NaN, wenn die Regelart keinen Durchflusssollwert hat
+            # Setpoint as flow; NaN if the control mode has no flow setpoint
             cv.Optional(CONF_SETPOINT_FLOW): sensor.sensor_schema(
                 unit_of_measurement=UNIT_CUBIC_METER_PER_HOUR,
                 accuracy_decimals=2,
@@ -184,7 +184,7 @@ CONFIG_SCHEMA = (
                 state_class=STATE_CLASS_MEASUREMENT,
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
-            # Sollwert als Drehzahl; NaN, wenn die Regelart nicht Konstantdrehzahl ist
+            # Setpoint as speed; NaN unless the control mode is constant speed
             cv.Optional(CONF_SETPOINT_SPEED): sensor.sensor_schema(
                 unit_of_measurement=UNIT_REVOLUTIONS_PER_MINUTE,
                 accuracy_decimals=0,
@@ -192,7 +192,7 @@ CONFIG_SCHEMA = (
                 state_class=STATE_CLASS_MEASUREMENT,
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
-            # Momentaner Zielwert (86/8), z. B. Punkt auf der Proportionaldruck-Kurve
+            # Current target (86/8), e.g. the point on the proportional pressure curve
             cv.Optional(CONF_SETPOINT_ACTUAL): sensor.sensor_schema(
                 unit_of_measurement=UNIT_METER,
                 accuracy_decimals=2,
@@ -206,7 +206,7 @@ CONFIG_SCHEMA = (
             cv.Optional(CONF_CONTROL_MODE_TEXT): text_sensor.text_sensor_schema(
                 icon="mdi:tune-variant",
             ),
-            # Nachtabsenkung (90/8, 90/7), Lufterkennung (88/600, 88/604), Entlueftung (88/612)
+            # Night setback (90/8, 90/7), air detection (88/600, 88/604), venting (88/612)
             cv.Optional(CONF_NIGHT_SETBACK_ENABLED): binary_sensor.binary_sensor_schema(
                 icon="mdi:weather-night",
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
@@ -224,7 +224,7 @@ CONFIG_SCHEMA = (
                 state_class=STATE_CLASS_TOTAL_INCREASING,
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
-            # Verbindung zur Pumpe steht und wird abgefragt (Schalter zeigen in HA sonst den letzten Zustand)
+            # Connected to the pump and polling (otherwise switches in HA show their last state)
             cv.Optional(CONF_CONNECTED): binary_sensor.binary_sensor_schema(
                 device_class=DEVICE_CLASS_CONNECTIVITY,
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,

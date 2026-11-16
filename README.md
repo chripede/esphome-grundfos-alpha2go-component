@@ -1,195 +1,199 @@
-# ESPHome-Komponente: Grundfos ALPHA2 GO (BLE)
+# ESPHome component: Grundfos ALPHA2 GO (BLE)
 
-Externe ESPHome-Komponente `grundfos_alpha2go` für die **ALPHA2 GO**. Die in ESPHome enthaltene `alpha3`-Komponente passt nicht:
-Sie fragt für Flow/Head ein Objekt ab (93/289), das nur die ursprüngliche ALPHA3 hat, und erwartet die ALPHA3-Antwortkennungen.
+English translation of [CDank/esphome-grundfos-alpha2go-component](https://github.com/CDank/esphome-grundfos-alpha2go-component). Code, Home Assistant texts, comments and docs translated; protocol logic unchanged.
 
-**Status:** Auf einer ALPHA2 GO getestet, Lesen und Schreiben (Bedienelemente) funktionieren. Alle 10 s kommen vier Antworten ohne Timeouts oder CRC-Fehler, alle Werte erscheinen in Home Assistant.
-Kompiliert mit ESPHome 2026.10.2 (ESP-IDF und Arduino). Die Firmware-Version der Testpumpe ist nicht bestimmt.
-Das Protokoll stammt aus der Grundfos-GO-APK und dem Mitschnitt von `Lasse-source/esphome-grundfos-alpha2-go`. Die Verbindungsreihenfolge ist daraus übernommen.
+External ESPHome component `grundfos_alpha2go` for the **ALPHA2 GO**. ESPHome's built-in `alpha3` component doesn't fit:
+it requests an object for flow/head (93/289) that only the original ALPHA3 has, and expects the ALPHA3 reply identifiers.
 
-## Einbindung
+**Status:** Tested on an ALPHA2 GO; reading and writing (controls) work. Every 10 s four replies arrive with no timeouts or CRC errors, and all values appear in Home Assistant.
+Compiles with ESPHome 2026.10.2 (ESP-IDF and Arduino). The test pump's firmware version is unknown.
+The protocol comes from the Grundfos GO APK and the capture in `Lasse-source/esphome-grundfos-alpha2-go`; the connection sequence is taken from there.
+
+## Setup
 
 ```yaml
 external_components:
-  - source: github://CDank/esphome-grundfos-alpha2go-component@main
+  - source:
+      type: local
+      path: components
     components: [grundfos_alpha2go]
 
 esp32_ble_tracker:
 
 ble_client:
-  - mac_address: "AA:BB:CC:DD:EE:FF"   # MAC der Pumpe (Name im Scan: "ALPHA2 GO")
-    id: pumpe
+  - mac_address: "AA:BB:CC:DD:EE:FF"   # pump MAC (name in scan: "ALPHA2 GO")
+    id: pump
 
 sensor:
   - platform: grundfos_alpha2go
-    ble_client_id: pumpe
-    flow: {name: "Pumpe Durchfluss"}
-    head: {name: "Pumpe Förderhöhe"}
-    power: {name: "Pumpe Leistung"}
-    media_temperature: {name: "Pumpe Medientemperatur"}
+    ble_client_id: pump
+    flow: {name: "Pump Flow"}
+    head: {name: "Pump Head"}
+    power: {name: "Pump Power"}
+    media_temperature: {name: "Pump Media Temperature"}
 ```
 
-Ein vollständiges Beispiel mit allen Sensoren steht in [`example/grundfos-alpha2go.yaml`](example/grundfos-alpha2go.yaml).
+A full example with every sensor is in [`example/grundfos-alpha2go.yaml`](example/grundfos-alpha2go.yaml).
 
-## Sensoren
+## Sensors
 
-Messwerte von der Testpumpe (Heizkreis, Dauerbetrieb):
+Readings from the test pump (heating circuit, continuous operation):
 
-| Option | Einheit | Objekt / Feld | Beispielwert |
+| Option | Unit | Object / field | Example |
 |---|---|---|---|
-| `flow` | m³/h | 93/290 @24 | 1,69 |
-| `head` | m | 93/290 @28 | 2,11 |
+| `flow` | m³/h | 93/290 @24 | 1.69 |
+| `head` | m | 93/290 @28 | 2.11 |
 | `voltage` | V | 87/69 @0 | 223 |
 | `dc_voltage` | V | 87/69 @4 | 309 |
-| `current` | A | 87/69 @8 | 0,164 |
-| `power` | W | 87/69 @12 | 21,6 |
-| `speed` | 1/min | 87/69 @20 | 3452 |
-| `aux_temperature` | °C | 87/69 @32 (Elektronik) | 62 |
+| `current` | A | 87/69 @8 | 0.164 |
+| `power` | W | 87/69 @12 | 21.6 |
+| `speed` | rpm | 87/69 @20 | 3452 |
+| `aux_temperature` | °C | 87/69 @32 (electronics) | 62 |
 | `starts` | – | 93/1 @0 | 158 |
 | `operating_hours` | h | 93/1 @8 | 4858 |
 | `power_on_hours` | h | 93/1 @24 | 4858 |
-| `media_temperature` | °C | 93/300 @0 | 38,0 |
-| `pcb_temperature` | °C | 93/300 @4 | 59,6 |
-| `controlbox_temperature` | °C | 93/300 @8 | 50,5 |
-| `energy` | kWh | 87/1 @0 (J ÷ 3,6·10⁶) | 77,47 |
-| `operation_mode` / `operation_mode_text` | Code / Text | 86/7 @1 | 0 / „Auto“ |
-| `control_mode` / `control_mode_text` | Code / Text | 86/7 @2 | 1 / „Proportionaldruck“ |
-| `setpoint_head` | m | 86/7 @3 (Pa ÷ 9806,65) | 2,50 (bei Proportionaldruck) |
-| `setpoint_flow` | m³/h | 86/7 @3 (m³/s × 3600) | 1,00 (bei Konstantem Durchfluss) |
-| `setpoint_speed` | 1/min | 86/7 @3 | 4060 (bei Konstantdrehzahl) |
-| `setpoint_actual` | m | 86/8 @3 (Pa ÷ 9806,65) | 2,09–2,11 (Punkt auf der Kurve) |
-| `setpoint` | SI-Rohwert | 86/7 @3 | 24 509,8 Pa / 0,000278 m³/s |
-| `night_setback_enabled` | binär | 90/8 @0 | aus (wie in der App) |
-| `night_mode` | binär | 90/7 @0 (gerade Nachtbetrieb) | aus |
-| `air_detection_enabled` | binär | 88/600 @7 | an (wie in der App) |
-| `air_detections` | Anzahl | 88/604 @1 (Lufterkennungen nach 168 Betriebsstunden) | 0 |
-| `venting_active` / `venting_status` | binär / Text | 88/612 @1 und 86/8 @0 | „Inaktiv“, „Nur Pumpe“ (an HK1 geprüft), „Anlage und Pumpe (manuell/automatisch)“ |
-| `connected` | binär (Verbindung) | – | „Verbunden“, sobald die Verbindung verschlüsselt steht und die Pumpe abgefragt wird; nach einer Trennung „Getrennt“. Nützlich, weil Schalter in Home Assistant nach einer Trennung den letzten Zustand behalten |
+| `media_temperature` | °C | 93/300 @0 | 38.0 |
+| `pcb_temperature` | °C | 93/300 @4 | 59.6 |
+| `controlbox_temperature` | °C | 93/300 @8 | 50.5 |
+| `energy` | kWh | 87/1 @0 (J ÷ 3.6·10⁶) | 77.47 |
+| `operation_mode` / `operation_mode_text` | code / text | 86/7 @1 | 0 / "Auto" |
+| `control_mode` / `control_mode_text` | code / text | 86/7 @2 | 1 / "Proportional pressure" |
+| `setpoint_head` | m | 86/7 @3 (Pa ÷ 9806.65) | 2.50 (proportional pressure) |
+| `setpoint_flow` | m³/h | 86/7 @3 (m³/s × 3600) | 1.00 (constant flow) |
+| `setpoint_speed` | rpm | 86/7 @3 | 4060 (constant speed) |
+| `setpoint_actual` | m | 86/8 @3 (Pa ÷ 9806.65) | 2.09–2.11 (point on the curve) |
+| `setpoint` | raw SI | 86/7 @3 | 24 509.8 Pa / 0.000278 m³/s |
+| `night_setback_enabled` | binary | 90/8 @0 | off (as in the app) |
+| `night_mode` | binary | 90/7 @0 (currently in night mode) | off |
+| `air_detection_enabled` | binary | 88/600 @7 | on (as in the app) |
+| `air_detections` | count | 88/604 @1 (detections after 168 operating hours) | 0 |
+| `venting_active` / `venting_status` | binary / text | 88/612 @1 and 86/8 @0 | "Inactive", "Pump only", "System and pump (manual/automatic)" |
+| `connected` | binary (connectivity) | – | Connected once the link is encrypted and the pump is being polled; Disconnected after a drop. Useful because HA switches keep their last state after a disconnect |
 
-Die Einstellungen (90/8, 88/600, 88/604) werden nur bei jeder 6. Abfrage gelesen (bei 10 s also etwa jede Minute) und direkt nach dem Verbinden. Nachtbetrieb und Entlüftung werden bei jeder Abfrage gelesen.
+The settings (90/8, 88/600, 88/604) are only read on every 6th poll (about once a minute at 10 s) and right after connecting. Night mode and venting are read on every poll.
 
-`energy` ist der Zähler der Pumpe selbst (wie „Kumulierte Leistungsaufnahme“ in der App), kein aus der Leistung integrierter Wert.
+`energy` is the pump's own counter (like "Accumulated power consumption" in the app), not a value integrated from power.
 
-**Sollwert:** Die Pumpe liefert ihn in SI-Einheiten, abhängig von der Regelart. Weil ein Sensor in Home Assistant eine feste Einheit braucht, gibt es getrennte Sensoren:
-`setpoint_head` gilt bei Druck-Regelarten (Konstant-/Proportionaldruck, Konstant-/Proportional-Differenzdruck, AutoAdapt), `setpoint_flow` bei Konstantem Durchfluss und FlowAdapt, `setpoint_speed` bei Konstantdrehzahl. Die jeweils anderen stehen dann auf „unbekannt“ (NaN).
-`setpoint_actual` ist der momentane Zielwert, den die Pumpe gerade ausregelt: bei Proportionaldruck der Punkt auf der Kurve beim aktuellen Durchfluss, er liegt nah an der tatsächlichen Förderhöhe.
-Verifiziert sind Prop. Druck (Pa), beide AutoAdapt-Varianten (Pa), Konstanter Förderstrom (m³/s) und Konstantdrehzahl (1/min); bei Konstantdruck ohne AutoAdapt ist Pa angenommen.
-In der GO-App wird AutoAdapt innerhalb von „Prop. Druck“ oder „Konstantdruck“ eingeschaltet. Die Pumpe meldet das als eigene Regelart: 13 = Prop. Druck mit AutoAdapt (an HK1: 41 138 Pa = 4,19 m, tatsächlich 3,2 m), 14 = Konstantdruck mit AutoAdapt (29 412 Pa = 3,00 m, tatsächlich 2,99 m). Die Profilnamen „Radiator“/„Underfloor“ beziehen sich auf diese beiden Kennlinientypen.
-Bei AutoAdapt meldet 86/8 denselben Wert wie 86/7; `setpoint_actual` zeigt dort also den Sollwert, nicht den momentanen Punkt auf der Kurve.
+**Setpoint:** The pump reports it in SI units, depending on the control mode. Because an HA sensor needs a fixed unit there are separate sensors:
+`setpoint_head` applies to pressure modes (constant/proportional pressure, constant/proportional differential pressure, AutoAdapt), `setpoint_flow` to constant flow and FlowAdapt, `setpoint_speed` to constant speed. The others are then "unknown" (NaN).
+`setpoint_actual` is the instantaneous target the pump is regulating to: under proportional pressure, the point on the curve at the current flow, close to the actual head.
+Verified: proportional pressure (Pa), both AutoAdapt variants (Pa), constant flow (m³/s) and constant speed (rpm); Pa is assumed for constant pressure without AutoAdapt.
+In the GO app AutoAdapt is switched on inside "Prop. pressure" or "Constant pressure". The pump reports it as its own control mode: 13 = proportional pressure with AutoAdapt (on HK1: 41 138 Pa = 4.19 m, actual 3.2 m), 14 = constant pressure with AutoAdapt (29 412 Pa = 3.00 m, actual 2.99 m). The profile names "Radiator"/"Underfloor" refer to these two curve types.
+Under AutoAdapt 86/8 reports the same value as 86/7, so `setpoint_actual` shows the setpoint there, not the instantaneous point on the curve.
 
-**Stopp** (Betriebsart 1): 86/6 und 86/7 behalten Regelart und Sollwert der letzten Einstellung, 86/8 meldet Konstantdrehzahl mit 0. Durchfluss, Förderhöhe, Leistung und Drehzahl gehen auf 0; im Betriebsverlauf (93/1) zählt die Betriebszeit nicht weiter, die Einschaltdauer schon.
+**Stop** (operation mode 1): 86/6 and 86/7 keep the control mode and setpoint of the last setting; 86/8 reports constant speed at 0. Flow, head, power and speed go to 0; in the operation history (93/1) operating time stops counting but power-on time continues.
 
-Codes für `operation_mode`: 0 = Auto, 1 = Stopp, 2 = Min, 3 = Max, 4 = Benutzerdefiniert, 7 = Hand, 8 = Standby.
-Codes für `control_mode`: 0 = Konstantdruck, 1 = Prop. Druck, 2 = Konstantdrehzahl, 8 = Konstanter Förderstrom, 13 = Prop. Druck (AutoAdapt), 14 = Konstantdruck (AutoAdapt); weitere Codes aus dem Profil (5, 10, 15 …) bietet die GO-App für die ALPHA2 GO nicht an.
-Die `_text`-Sensoren liefern dasselbe als deutschen Klartext, angelehnt an die Begriffe der GO-App. Im Log stehen zum Vergleich auch 86/6 (lokale Anforderung) und 86/8.
+Codes for `operation_mode`: 0 = Auto, 1 = Stop, 2 = Min, 3 = Max, 4 = User defined, 7 = Hand, 8 = Standby.
+Codes for `control_mode`: 0 = Constant pressure, 1 = Proportional pressure, 2 = Constant speed, 8 = Constant flow, 13 = Proportional pressure (AutoAdapt), 14 = Constant pressure (AutoAdapt); other codes from the profile (5, 10, 15 …) aren't offered for the ALPHA2 GO by the GO app.
+The `_text` sensors give the same as English text. The log also shows 86/6 (local request) and 86/8 for comparison.
 
-**Kategorien in Home Assistant** (Voreinstellung, pro Entität mit `entity_category:` überschreibbar):
-- **Sensoren:** Durchfluss, Förderhöhe, Leistung, Drehzahl, Medientemperatur, Energie, Betriebsart und Regelart als Text, Nachtbetrieb, Entlüftung aktiv/Status.
-- **Diagnose:** Spannungen, Strom, Elektroniktemperaturen, Zähler (Starts, Stunden, Lufterkennungen), Zahlencodes und Rohwert, Sollwert-Sensoren, Zielwert aktuell, Nachtabsenkung/Lufterkennung aktiviert.
-- **Steuerung:** Schalter Pumpe.
-- **Konfiguration:** Regelart, Sollwerte, Nachtabsenkung, Lufterkennung, System-Entlüftung starten/stoppen.
+**Home Assistant categories** (default, overridable per entity with `entity_category:`):
+- **Sensors:** flow, head, power, speed, media temperature, energy, operation and control mode as text, night mode, venting active/status.
+- **Diagnostic:** voltages, current, electronics temperatures, counters (starts, hours, air detections), numeric codes and raw value, setpoint sensors, current target, night setback / air detection enabled.
+- **Control:** pump switch.
+- **Config:** control mode, setpoints, night setback, air detection, start/stop system venting.
 
-Es wird nur angefragt, was konfiguriert ist. Die Antworten werden über den Objekttyp erkannt, nicht über die Version. Dadurch spielt es keine Rolle, ob die Pumpe Typ 256 als v1, v2 oder v3 meldet.
-Bei einem Verbindungsabbruch gehen alle Sensoren auf `NaN`.
+Only what is configured is requested. Replies are identified by object type, not version, so it doesn't matter whether the pump reports type 256 as v1, v2 or v3.
+On a connection drop all sensors go to `NaN`.
 
-## Einrichtung
+## Getting started
 
-1. `example/grundfos-alpha2go.yaml` anpassen (`pump_mac`, WLAN).
-2. Flashen. **Beim ersten Verbinden die Bluetooth-Taste an der Pumpe drücken**, sonst `auth fail reason=82`. Der Bond liegt danach im Flash des ESP32 und übersteht Neustarts und OTA-Updates: An der Testpumpe hat sich der ESP nach mehreren OTA-Updates jedes Mal ohne erneuten Tastendruck wieder verbunden.
-   **Wiederverbinden:** Nach einer Trennung kann es passieren, dass der BLE-Stack des ESP den Bond nicht mehr im Arbeitsspeicher hat, obwohl er im Flash steht. Der ESP startet dann eine neue Kopplung, die die Pumpe mit `reason=82` ablehnt, und das wiederholt sich bis zum nächsten Neustart. Die Komponente erkennt das (reason 82, Bond im Flash vorhanden) und startet den BLE-Stack neu (`Restarting BLE stack to reload bonds from NVS`, höchstens alle 30 s). Danach verbindet sie sich ohne Tastendruck. Der Neustart betrifft alle BLE-Funktionen dieses ESP: Auch Verbindungen zu weiteren Pumpen werden für etwa 8 s getrennt und danach automatisch neu aufgebaut (die Bonds aller Pumpen werden dabei frisch geladen). Die 30-s-Sperre gilt für alle Pumpen gemeinsam. Andere Komponenten (WLAN, UART …) laufen weiter.
-3. Die GO-App auf dem Handy schließen. Die Pumpe akzeptiert nur einen Client.
+1. Adapt `example/grundfos-alpha2go.yaml` (`pump_mac`, Wi-Fi).
+2. Flash. **On the first connection press the Bluetooth button on the pump**, otherwise you get `auth fail reason=82`. The bond is then stored in the ESP32's flash and survives restarts and OTA updates: on the test pump the ESP reconnected after several OTA updates without another button press.
+   **Reconnecting:** After a disconnect the ESP's BLE stack can lose the bond from RAM even though it's still in flash. The ESP then starts a new pairing, which the pump rejects with `reason=82`, repeating until the next reboot. The component detects this (reason 82, bond present in flash) and restarts the BLE stack (`Restarting BLE stack to reload bonds from NVS`, at most every 30 s), after which it reconnects without a button press. The restart affects all BLE functions on this ESP: connections to other pumps are dropped for about 8 s and then re-established automatically (all pumps' bonds are reloaded). The 30 s lockout is shared by all pumps. Other components (Wi-Fi, UART …) keep running.
+3. Close the GO app on your phone. The pump accepts only one client.
 
-Ablauf pro Verbindung: Verschlüsselung → CCCD schreiben → Erstabfrage der App → Abfragen nacheinander (eine gleichzeitig, 30 ms Abstand, 1 s Timeout).
+Per-connection sequence: encryption → write CCCD → app's initial query → queries one after another (one at a time, 30 ms gap, 1 s timeout).
 
-Mehrere Pumpen: je Pumpe ein eigener `ble_client` und ein eigener `grundfos_alpha2go`-Block; jede Pumpe einzeln per Bluetooth-Taste koppeln.
+Multiple pumps: a separate `ble_client` and `grundfos_alpha2go` block per pump; pair each pump individually with its Bluetooth button.
 
-## Protokoll: Feldbelegung (an der Hardware geprüft)
+## Protocol: field layout (verified on hardware)
 
-Alle Werte Big Endian, Floats IEEE-754. `NaN` bedeutet: Die Pumpe liefert dieses Feld nicht.
-Die Feldnamen stammen aus einem GENI-Geräteprofil, das in der Grundfos-GO-App als Testdatei enthalten ist (`test_geni_profile_30_4_1.xml`); die Objekte 87/1, 87/69, 93/1, 93/290 und 93/300 stimmen darin in ID und Typ mit der ALPHA2 GO überein.
+All values big endian, floats IEEE-754. `NaN` means the pump doesn't supply that field.
+Field names come from a GENI device profile included as a test file in the Grundfos GO app (`test_geni_profile_30_4_1.xml`); objects 87/1, 87/69, 93/1, 93/290 and 93/300 match the ALPHA2 GO in ID and type.
 
-**93/290, Typ 565 v2, 36 Byte**
+**93/290, type 565 v2, 36 bytes**
 
-| Offset | Inhalt | ALPHA2 GO |
+| Offset | Content | ALPHA2 GO |
 |---|---|---|
-| @0 | Durchfluss in m³/s | ✅ (×3600 = @24) |
-| @4 | Förderdruck in Pa | ✅ (÷9806,65 = @28) |
-| @8 … @20 | Einlass-/Auslassdruck, Medien-/Differenztemperatur | `NaN` |
-| @24 | Durchfluss in m³/h | ✅ → `flow` |
-| @28 | Förderhöhe in m | ✅ → `head` |
-| @32 | kv-Wert | ✅ (nur Log) |
+| @0 | Flow in m³/s | ✅ (×3600 = @24) |
+| @4 | Pump pressure in Pa | ✅ (÷9806.65 = @28) |
+| @8 … @20 | Inlet/outlet pressure, media/differential temperature | `NaN` |
+| @24 | Flow in m³/h | ✅ → `flow` |
+| @28 | Head in m | ✅ → `head` |
+| @32 | kv value | ✅ (log only) |
 
-**87/69, Typ 256 v3, 41 Byte**
+**87/69, type 256 v3, 41 bytes**
 
-| Offset | Inhalt | ALPHA2 GO |
+| Offset | Content | ALPHA2 GO |
 |---|---|---|
-| @0 / @4 | Netzspannung / Zwischenkreisspannung | ✅ |
-| @8 / @12 | Strom / Leistung | ✅ |
-| @16 | DC-Leistung | ✅ (≈ @12, nur Log) |
-| @20 | Drehzahl | ✅ |
-| @24 / @28 | Umrichter-/Wechselrichtertemperatur | `NaN` |
-| @32 | Elektroniktemperatur | ✅ |
-| @36 | PWM | nicht ausgewertet |
+| @0 / @4 | Mains voltage / DC link voltage | ✅ |
+| @8 / @12 | Current / power | ✅ |
+| @16 | DC power | ✅ (≈ @12, log only) |
+| @20 | Speed | ✅ |
+| @24 / @28 | Converter / inverter temperature | `NaN` |
+| @32 | Electronics temperature | ✅ |
+| @36 | PWM | not decoded |
 
-**93/1, Typ 248 v2, 28 Byte**
+**93/1, type 248 v2, 28 bytes**
 
-| Offset | Inhalt | Beispiel |
+| Offset | Content | Example |
 |---|---|---|
-| @0 u32 | Starts gesamt | 158 |
-| @4 / @6 u16 | Starts letzte Stunde / letzte 24 h | 0 / 0 |
-| @8 u32 | Betriebszeit gesamt (s) | 4858 h |
-| @12 u32 | Betriebszeit letzte 24 h (s) | 23,6 h |
-| @16 u32 | Laufzeit seit letztem Start (s) | 27,4 Tage |
-| @20 u32 | Anzahl Einschaltvorgänge | 157 |
-| @24 u32 | Einschaltdauer gesamt (s) | 4858 h |
+| @0 u32 | Total starts | 158 |
+| @4 / @6 u16 | Starts last hour / last 24 h | 0 / 0 |
+| @8 u32 | Total operating time (s) | 4858 h |
+| @12 u32 | Operating time last 24 h (s) | 23.6 h |
+| @16 u32 | Run time since last start (s) | 27.4 days |
+| @20 u32 | Number of power-ons | 157 |
+| @24 u32 | Total power-on time (s) | 4858 h |
 
-Nur @0, @8 und @24 sind als Sensoren verfügbar, die übrigen Felder erscheinen im VERBOSE-Log.
+Only @0, @8 and @24 are available as sensors; the other fields appear in the VERBOSE log.
 
-**93/300, Typ 534 v2, 13 Byte** (nicht 16)
+**93/300, type 534 v2, 13 bytes** (not 16)
 
-| Offset | Inhalt | ALPHA2 GO |
+| Offset | Content | ALPHA2 GO |
 |---|---|---|
-| @0 | Medientemperatur | ✅ |
-| @4 | Platinentemperatur | ✅ |
-| @8 | Controlbox-Temperatur | ✅ |
-| @12 (1 Byte) | `steady_state` (bool) | ✅ |
+| @0 | Media temperature | ✅ |
+| @4 | PCB temperature | ✅ |
+| @8 | Control box temperature | ✅ |
+| @12 (1 byte) | `steady_state` (bool) | ✅ |
 
-**87/1, Typ 232 v1 `OverallEnergyConsumption`, 26 Byte (bei einer Pumpe)**
+**87/1, type 232 v1 `OverallEnergyConsumption`, 26 bytes (for one pump)**
 
-| Offset | Inhalt | ALPHA2 GO |
+| Offset | Content | ALPHA2 GO |
 |---|---|---|
-| @0 | Energie gesamt, double in J | ✅ 278 880 350 J = 77,47 kWh (+220 J pro 10 s bei 22 W) |
-| @8 | Leistung gesamt, float in W | ✅ 22,04 |
-| @12 | Anzahl Pumpen, u16 | ✅ 1 |
-| @14 | je Pumpe: Leistung (float, W), Energie (double, J) | ✅ wie @8 / @0 |
+| @0 | Total energy, double in J | ✅ 278 880 350 J = 77.47 kWh (+220 J per 10 s at 22 W) |
+| @8 | Total power, float in W | ✅ 22.04 |
+| @12 | Number of pumps, u16 | ✅ 1 |
+| @14 | Per pump: power (float, W), energy (double, J) | ✅ same as @8 / @0 |
 
-**86/6, 86/7, 86/8, Typ 303 v1 `OperationStatusRequest`, 7 Byte**
+**86/6, 86/7, 86/8, type 303 v1 `OperationStatusRequest`, 7 bytes**
 
-| Offset | Inhalt | ALPHA2 GO |
+| Offset | Content | ALPHA2 GO |
 |---|---|---|
-| @0 | `control_source` (0 = nicht verwendet, 1 = Panel, 2 = Bus, 104 = AutoNight, …) | ✅ 86/6: 0, 86/7 und 86/8: 1 |
+| @0 | `control_source` (0 = unused, 1 = panel, 2 = bus, 104 = AutoNight, …) | ✅ 86/6: 0, 86/7 and 86/8: 1 |
 | @1 | `operation_mode` | ✅ 0 = Auto |
-| @2 | `control_mode` | ✅ 1 = Proportionaldruck, 8 = Konstanter Durchfluss |
-| @3 | `set_point`, float | ✅ Pa, m³/s bzw. 1/min je nach Regelart |
+| @2 | `control_mode` | ✅ 1 = proportional pressure, 8 = constant flow |
+| @3 | `set_point`, float | ✅ Pa, m³/s or rpm depending on control mode |
 
-86/6 ist die lokale Anforderung (App/Taste), 86/7 die priorisierte Anforderung nach Bewertung von lokal/remote/Alarm, 86/8 die tatsächlich umgesetzte Anforderung.
-Bei Proportionaldruck enthalten 86/6 und 86/7 den eingestellten Sollwert (24 509,8 Pa = 2,50 m), 86/8 den momentanen Punkt auf der Kurve (≈ 20 500 Pa = 2,09 m, schwankt mit dem Durchfluss). Bei Konstantem Durchfluss sind alle drei gleich.
+86/6 is the local request (app/button), 86/7 the prioritised request after weighing local/remote/alarm, 86/8 the request actually realised.
+Under proportional pressure 86/6 and 86/7 hold the configured setpoint (24 509.8 Pa = 2.50 m), 86/8 the instantaneous point on the curve (≈ 20 500 Pa = 2.09 m, varies with flow). Under constant flow all three are equal.
 
-**Einstellungs-Objekte** (an der ALPHA2 GO geprüft; Werte an HK1: 88/600 = 50 / 1000 / 150 / 5 / aktiviert, passend zur App)
+**Settings objects** (verified on the ALPHA2 GO; values on HK1: 88/600 = 50 / 1000 / 150 / 5 / enabled, matching the app)
 
-| Objekt | Typ | Inhalt |
+| Object | Type | Content |
 |---|---|---|
-| 90/8 | 333 `AutoNightEnable` | @0 bool: Nachtabsenkung aktiviert |
-| 90/7 | 324 `AutoNightStatus` | @0 bool: gerade Nachtbetrieb |
-| 88/600 | 600 `AirDetectionConfiguration`, 8 Byte | @0 u16 Drehzahländerung, @2 u16 Druckänderung, @4 u16 Empfindlichkeit, @6 u8 Ignorierzeit nach Start, @7 bool aktiviert |
-| 88/604 | 984 `AirDetectCounterStorage`, 2 Byte | @0 u8 Erkennungen in den ersten 24 Betriebsstunden, @1 u8 nach 168 Betriebsstunden |
-| 88/612 | 971 `SystemAirVentingCommandAndStatus`, 5 Byte | @0 Befehl (0 Stopp, 1 Start manuell), @1 Status (0 inaktiv, 1 manuell, 2 automatisch), @2 u16 Fortschritt, @4 Phase (0 Idle, 1–4 Phase 0–3) |
+| 90/8 | 333 `AutoNightEnable` | @0 bool: night setback enabled |
+| 90/7 | 324 `AutoNightStatus` | @0 bool: currently in night mode |
+| 88/600 | 600 `AirDetectionConfiguration`, 8 bytes | @0 u16 speed change, @2 u16 pressure change, @4 u16 sensitivity, @6 u8 ignore time after start, @7 bool enabled |
+| 88/604 | 984 `AirDetectCounterStorage`, 2 bytes | @0 u8 detections in first 24 operating hours, @1 u8 after 168 operating hours |
+| 88/612 | 971 `SystemAirVentingCommandAndStatus`, 5 bytes | @0 command (0 stop, 1 start manual), @1 state (0 inactive, 1 manual, 2 automatic), @2 u16 progress, @4 phase (0 idle, 1–4 phase 0–3) |
 
-„Nur Pumpe entlüften“ (10 min) erscheint **nicht** in 88/612, sondern in 86/8 als Steuerquelle 111 (AirVenting) mit Konstantdrehzahl 5225 1/min; 86/6 und 86/7 bleiben unverändert. 88/612 gehört zu „Entlüftung von Anlage und Pumpe“. `venting_active`/`venting_status` werten beides aus.
+"Vent pump only" (10 min) does **not** appear in 88/612 but in 86/8 as control source 111 (AirVenting) at constant speed 5225 rpm; 86/6 and 86/7 stay unchanged. 88/612 belongs to "Vent system and pump". `venting_active`/`venting_status` evaluate both.
 
-## Fehlersuche
+## Troubleshooting
 
-Mit `logger` auf `VERBOSE` für `grundfos_alpha2go` loggt die Komponente jede Antwort mit Typ, Version und Länge, dazu alle Rohfelder (Floats von 565 und 256, Hex-Dump von 248 und 534, dekodierte Werte von 232). Für 87/1, 86/6–8, 90/7–8 und 88/600–612 erscheinen zusätzlich die rohen Notifications (`raw RX`), also auch Antworten, die der Parser verwirft. 86/6–8, 90/7–8 und 88/600–612 werden schon auf `DEBUG` dekodiert geloggt, Timeouts mit Objektnummer (`Reply timeout (90/8)`).
+With `logger` at `VERBOSE` for `grundfos_alpha2go` the component logs every reply with type, version and length, plus all raw fields (floats from 565 and 256, hex dump of 248 and 534, decoded values of 232). For 87/1, 86/6–8, 90/7–8 and 88/600–612 the raw notifications (`raw RX`) are also shown, including replies the parser discards. 86/6–8, 90/7–8 and 88/600–612 are already logged decoded at `DEBUG`, and timeouts with the object number (`Reply timeout (90/8)`).
 
 ```yaml
 logger:
@@ -203,100 +207,100 @@ logger:
     ble_client: INFO
 ```
 
-Bei Verbindungsproblemen loggt die Komponente jede Trennung mit Grund (`Disconnected (reason 0x08 …)`: 0x08 Funk-Timeout, 0x13 von der Pumpe getrennt, 0x16 vom ESP getrennt), jede Verschlüsselung mit Schlüsselstatus und die Anzahl der Bonds im Flash. Meldungen des BLE-Stacks selbst erscheinen mit Tags wie `BT_APPL`, `BT_BTC` oder `BT_SMP`; Zeilen wie `remove bond` oder `keep bond after pairing fail` zeigen, wann der Stack einen Bond verwirft.
+For connection problems the component logs every disconnect with its reason (`Disconnected (reason 0x08 …)`: 0x08 radio timeout, 0x13 disconnected by the pump, 0x16 disconnected by the ESP), every encryption with key status, and the number of bonds in flash. Messages from the BLE stack itself appear with tags like `BT_APPL`, `BT_BTC` or `BT_SMP`; lines such as `remove bond` or `keep bond after pairing fail` show when the stack drops a bond.
 
 ## Tests
 
-PC-Unittests für CRC, Request-Frames, Antwortkennungen und die Reassemblierung zerstückelter Notifications. Die Flow/Head-Prüfung nutzt echte Werte aus dem Hardware-Log.
+PC unit tests for CRC, request frames, reply identifiers and reassembly of fragmented notifications. The flow/head check uses real values from the hardware log.
 
 ```bash
 g++ -std=c++17 -I components/grundfos_alpha2go tests/test_geni.cpp -o t && ./t
 ```
 
-Mit MSVC (Developer Command Prompt):
+With MSVC (Developer Command Prompt):
 
 ```bat
 cl /std:c++17 /EHsc /I components\grundfos_alpha2go tests\test_geni.cpp /Fe:t.exe && t.exe
 ```
 
-## Bedienelemente (Schreibzugriff)
+## Controls (write access)
 
-Die Bedienelemente schreiben über dieselbe BLE-Verbindung. Der angezeigte Zustand kommt immer aus der Pumpe: Nach jedem Schreibzugriff liest die Komponente Betriebsstatus, Nachtabsenkung, Lufterkennung und Entlüftung sofort zurück. Änderungen in der GO-App oder an der Pumpe erscheinen spätestens nach dem nächsten Abfragezyklus. Beim Booten schreibt der ESP nichts. Ist die Verbindung zur Pumpe getrennt, meldet die Komponente für alle Entitäten „kein Zustand“: Sensoren, Auswahl und Zahlen stehen dann in Home Assistant auf „unbekannt“. Schalter zeigen weiter den letzten Zustand, weil die ESPHome-Integration von Home Assistant diese Meldung bei Schaltern derzeit nicht auswertet; ob sie aktuell sind, zeigt der Binärsensor `connected`. „Nicht verfügbar“ pro Entität kennt die ESPHome-API nicht.
+The controls write over the same BLE connection. The displayed state always comes from the pump: after every write the component immediately reads back operation status, night setback, air detection and venting. Changes made in the GO app or on the pump show up by the next poll cycle at the latest. The ESP writes nothing at boot. While disconnected from the pump the component reports "no state" for all entities: sensors, selects and numbers show "unknown" in Home Assistant. Switches keep showing their last state because HA's ESPHome integration currently ignores that report for switches; use the `connected` binary sensor to tell whether they're current. The ESPHome API has no per-entity "unavailable".
 
 ```yaml
 switch:
   - platform: grundfos_alpha2go
-    grundfos_alpha2go_id: pumpe_go   # id der Komponente (sensor: platform: grundfos_alpha2go)
+    grundfos_alpha2go_id: pump_go    # id of the component (sensor: platform: grundfos_alpha2go)
     pump:
-      name: "Pumpe"
+      name: "Pump"
     night_setback:
-      name: "Pumpe Nachtabsenkung"
+      name: "Pump Night Setback"
     air_detection:
-      name: "Pumpe Lufterkennung"
+      name: "Pump Air Detection"
 
 select:
   - platform: grundfos_alpha2go
     control_mode:
-      name: "Pumpe Regelart"
+      name: "Pump Control Mode"
 
 number:
   - platform: grundfos_alpha2go
-    setpoint_head:                   # Prop. Druck / Konstantdruck
-      name: "Pumpe Sollwert Förderhöhe"
+    setpoint_head:                   # proportional / constant pressure
+      name: "Pump Setpoint Head"
       mode: box
-    setpoint_flow:                   # Konstanter Förderstrom
-      name: "Pumpe Sollwert Förderstrom"
-    setpoint_speed:                  # Konstantdrehzahl
-      name: "Pumpe Sollwert Drehzahl"
+    setpoint_flow:                   # constant flow
+      name: "Pump Setpoint Flow"
+    setpoint_speed:                  # constant speed
+      name: "Pump Setpoint Speed"
 
 button:
   - platform: grundfos_alpha2go
     venting_start:
-      name: "Pumpe System-Entlüftung starten"
+      name: "Pump Start System Venting"
     venting_stop:
-      name: "Pumpe System-Entlüftung stoppen"
+      name: "Pump Stop System Venting"
 ```
 
-`grundfos_alpha2go_id` kann entfallen, wenn es nur eine Pumpe gibt.
+`grundfos_alpha2go_id` can be omitted if there is only one pump.
 
-| Entität | Wirkung | Telegramm | An HK1 geprüft |
+| Entity | Effect | Telegram | Verified on HK1 |
 |---|---|---|---|
-| `switch.pump` | Ein = Betriebsart Auto, Aus = Stopp. Zustand aus 86/6. | Class 3 START (6) / STOP (5) | ✅ |
-| `switch.night_setback` | Nachtabsenkung (AutoNight) ein/aus | SET 90/8 | ✅ |
-| `switch.air_detection` | kontinuierliche Lufterkennung ein/aus. Die übrigen Werte aus 88/600 werden unverändert zurückgeschrieben. | SET 88/600 (25 Byte) | ✅ |
-| `select.control_mode` | Prop. Druck, Konstantdruck, beide mit AutoAdapt, Konstanter Förderstrom, Konstantdrehzahl | SET 86/6 | ✅ alle sechs |
-| `number.setpoint_head` | Sollwert in m, nur bei Prop. Druck und Konstantdruck | SET 86/6 | ✅ |
-| `number.setpoint_flow` | Sollwert in m³/h, nur bei Konstantem Förderstrom | SET 86/6 | ✅ |
-| `number.setpoint_speed` | Sollwert in 1/min, nur bei Konstantdrehzahl | SET 86/6 | ✅ |
-| `button.venting_start` / `venting_stop` | System-Entlüftung manuell starten / abbrechen | SET 88/612 | ✅ |
+| `switch.pump` | On = operation mode Auto, Off = Stop. State from 86/6. | Class 3 START (6) / STOP (5) | ✅ |
+| `switch.night_setback` | Night setback (AutoNight) on/off | SET 90/8 | ✅ |
+| `switch.air_detection` | Continuous air detection on/off. The other 88/600 values are written back unchanged. | SET 88/600 (25 bytes) | ✅ |
+| `select.control_mode` | Proportional pressure, constant pressure, both with AutoAdapt, constant flow, constant speed | SET 86/6 | ✅ all six |
+| `number.setpoint_head` | Setpoint in m, proportional and constant pressure only | SET 86/6 | ✅ |
+| `number.setpoint_flow` | Setpoint in m³/h, constant flow only | SET 86/6 | ✅ |
+| `number.setpoint_speed` | Setpoint in rpm, constant speed only | SET 86/6 | ✅ |
+| `button.venting_start` / `venting_stop` | Manually start / abort system venting | SET 88/612 | ✅ |
 
-Hinweise:
-- **Sollwerte:** Es gilt nur die Zahl, die zur aktiven Regelart passt. Die anderen stehen auf „unbekannt“, und Eingaben dort werden mit einer Warnung im Log verworfen. Bei AutoAdapt bestimmt die Pumpe den Sollwert selbst: `setpoint_head` zeigt ihn an, lässt sich dann aber nicht verstellen.
-- **Grenzen:** Die voreingestellten Grenzen (0,5–6 m, 0,1–3,5 m³/h, 1000–5500 1/min) sind Vorgaben und hängen vom Pumpentyp ab. Mit `min_value`, `max_value` und `step` lassen sie sich anpassen.
-- **Regelartwechsel:** Wechselt die Einheit, wird der zuletzt gelesene Sollwert dieser Einheit mitgeschickt. Gibt es noch keinen, gelten Startwerte: 2 m, 1 m³/h bzw. 3000 1/min. Zwischen Prop. Druck und Konstantdruck bleibt der Sollwert erhalten. Beim Wechsel aus AutoAdapt heraus wird der eigene, zuletzt gelesene Druck-Sollwert verwendet, nicht der von AutoAdapt.
-- **Abgelehnte Befehle:** Lehnt die Pumpe einen Befehl ab, steht `rejected by pump` mit dem Statuscode im Log. Die Entität springt dann beim Zurücklesen auf den tatsächlichen Zustand.
-- STOP/START und alle SETs ändern die **lokale** Anforderung (86/6), genau wie die GO-App. Die App kann alles danach normal wieder ändern.
+Notes:
+- **Setpoints:** Only the number matching the active control mode applies. The others show "unknown" and input there is discarded with a warning in the log. Under AutoAdapt the pump sets the setpoint itself: `setpoint_head` displays it but can't be changed.
+- **Limits:** The default limits (0.5–6 m, 0.1–3.5 m³/h, 1000–5500 rpm) are defaults and depend on the pump type. Adjust with `min_value`, `max_value` and `step`.
+- **Changing control mode:** If the unit changes, the last read setpoint in that unit is sent along. If there isn't one yet, defaults apply: 2 m, 1 m³/h or 3000 rpm. Switching between proportional and constant pressure keeps the setpoint. Leaving AutoAdapt uses our own last read pressure setpoint, not AutoAdapt's.
+- **Rejected commands:** If the pump rejects a command, `rejected by pump` with the status code appears in the log, and the entity snaps back to the real state on read-back.
+- STOP/START and all SETs change the **local** request (86/6), exactly like the GO app. The app can change everything back normally afterwards.
 
-### Schreibprotokoll (an HK1 ermittelt)
+### Write protocol (determined on HK1)
 
-- **Class 3 (Befehle):** `27 05 E7 F8 03 81 <Befehl> CRC`. Die Antwort `24 04 F8 E7 03 00 CRC` bedeutet OK. Die Befehle NIGHT_REDUCT_E/D (66/67) aus dem Profil kennt die ALPHA2 GO nicht und antwortet mit `03 81 <Befehl>` = ACK 10 (ID unbekannt).
-- **Class-10-SET:** `27 LE E7 F8 0A <0x80|n> <ID> <SubHi> <SubLo> <TypHi> <TypLo> <Ver> 00 00 <DatenLen> <Daten> CRC`. Das ist der Objektkopf aus den GET-Antworten ohne das führende Statusbyte. Die Antwort `0A 01 <Status>` enthält als erstes Datenbyte einen Statuscode (in der App `GeniClass10StatusCode`):
+- **Class 3 (commands):** `27 05 E7 F8 03 81 <cmd> CRC`. The reply `24 04 F8 E7 03 00 CRC` means OK. The ALPHA2 GO doesn't know the profile's NIGHT_REDUCT_E/D commands (66/67) and replies `03 81 <cmd>` = ACK 10 (unknown ID).
+- **Class 10 SET:** `27 LE E7 F8 0A <0x80|n> <ID> <SubHi> <SubLo> <TypeHi> <TypeLo> <Ver> 00 00 <DataLen> <Data> CRC`. That's the object header from GET replies without the leading status byte. The reply `0A 01 <status>` carries a status code as its first data byte (`GeniClass10StatusCode` in the app):
 
-| Anfrage | Status |
+| Request | Status |
 |---|---|
-| SET mit Objektkopf ohne Statusbyte | `00` = OK |
-| GET/SET auf ein unbekanntes Objekt (90/9999) | `04` = Objekt nicht gefunden |
-| SET mit führendem `00` vor dem Typ, oder ganz ohne Objektkopf | `04` |
-| OS-Bits 01 (`0x40`) | `01` = Operation unbekannt |
-| OS-Bits 11 (INFO, `0xC3`) | APDU-ACK 11 = Operation nicht erlaubt (`0A C1 5A`) |
+| SET with object header without status byte | `00` = OK |
+| GET/SET on an unknown object (90/9999) | `04` = object not found |
+| SET with a leading `00` before the type, or with no object header | `04` |
+| OS bits 01 (`0x40`) | `01` = unknown operation |
+| OS bits 11 (INFO, `0xC3`) | APDU ACK 11 = operation not allowed (`0A C1 5A`) |
 
-- **Lange Frames:** Ein BLE-Write fasst 20 Byte. Längere Frames (86/6: 24 Byte, 88/612: 22 Byte, 88/600: 25 Byte) schickt die Komponente in Stücken zu 20 Byte. Die Pumpe setzt sie wieder zusammen.
-- **Diagnose:** `id(pumpe_go).send_raw_class10({0x03, 0x5A, 0x00, 0x08});` sendet eine beliebige Class-10-APDU, zum Beispiel aus einem Template-Button. Die Antwort wird geprüft und geloggt.
+- **Long frames:** A BLE write holds 20 bytes. Longer frames (86/6: 24 bytes, 88/612: 22 bytes, 88/600: 25 bytes) are sent in 20-byte pieces; the pump reassembles them.
+- **Diagnostics:** `id(pump_go).send_raw_class10({0x03, 0x5A, 0x00, 0x08});` sends any Class 10 APDU, e.g. from a template button. The reply is checked and logged.
 
-## Offen
+## Open questions
 
-- 86/9 (`temporary_operation_control_obj`) enthält im Ruhezustand Quelle 0, Auto, Konstantdrehzahl, 5225 1/min, also genau die Drehzahl der Pumpenentlüftung. Vermutlich die Vorgabe für „Nur Pumpe entlüften“; noch nicht beschrieben.
-- „Nur Pumpe entlüften“ lässt sich nicht starten. Dafür ist in der App kein Objekt zu finden; die Funktion ist nur als Steuerquelle 111 in 86/8 sichtbar.
-- Ungeprüft: andere Firmware-Stände, andere ALPHA2-GO-Varianten.
+- 86/9 (`temporary_operation_control_obj`) contains at rest source 0, Auto, constant speed, 5225 rpm — exactly the pump-venting speed. Probably the preset for "vent pump only"; not yet written.
+- "Vent pump only" can't be started. No object for it can be found in the app; the function is only visible as control source 111 in 86/8.
+- Untested: other firmware versions, other ALPHA2 GO variants.
 
-Lizenz: MIT. Unabhängiges Projekt, nicht von Grundfos.
+Licence: MIT. Independent project, not affiliated with Grundfos.

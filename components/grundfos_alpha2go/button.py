@@ -15,7 +15,7 @@ CONF_VENTING_STOP = "venting_stop"
 CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(CONF_GRUNDFOS_ALPHA2GO_ID): cv.use_id(GrundfosAlpha2Go),
-        # System-Entlueftung (88/612) manuell starten / abbrechen
+        # Manually start / abort system venting (88/612)
         cv.Optional(CONF_VENTING_START): button.button_schema(
             GrundfosButton, icon="mdi:air-filter", entity_category=ENTITY_CATEGORY_CONFIG
         ),

@@ -1,7 +1,7 @@
-# Beispiel: Grundfos ALPHA2 GO ueber BLE -> ESPHome (lesend)
+# Example: Grundfos ALPHA2 GO over BLE -> ESPHome
 substitutions:
-  name: grundfos-pumpe
-  pump_mac: "AA:BB:CC:DD:EE:FF"   # MAC der Pumpe (Name im Scan: "ALPHA2 GO")
+  name: grundfos-pump
+  pump_mac: "AA:BB:CC:DD:EE:FF"   # pump MAC (name in scan: "ALPHA2 GO")
 
 esphome:
   name: ${name}
@@ -14,7 +14,7 @@ esp32:
 logger:
   level: DEBUG
   logs:
-    grundfos_alpha2go: DEBUG    # VERBOSE zeigt zusaetzlich alle Rohfelder jeder Antwort
+    grundfos_alpha2go: DEBUG    # VERBOSE additionally shows every raw field of every reply
 
 api:
 wifi:
@@ -22,112 +22,109 @@ wifi:
   password: !secret wifi_password
 
 external_components:
-  - source: github://CDank/esphome-grundfos-alpha2go-component@main
-    components: [grundfos_alpha2go]
-  # lokal stattdessen:
-  # - source:
-  #     type: local
-  #     path: ../components
+  - source:
+      type: local
+      path: components          # folder containing grundfos_alpha2go/
 
 esp32_ble_tracker:
 
 ble_client:
   - mac_address: ${pump_mac}
-    id: pumpe
+    id: pump
 
 sensor:
   - platform: grundfos_alpha2go
-    ble_client_id: pumpe
+    id: pump_go
+    ble_client_id: pump
     update_interval: 10s
     flow:
-      name: "Pumpe Durchfluss"
+      name: "Pump Flow"
     head:
-      name: "Pumpe Foerderhoehe"
+      name: "Pump Head"
     power:
-      id: pumpe_leistung
-      name: "Pumpe Leistung"
+      name: "Pump Power"
     voltage:
-      name: "Pumpe Netzspannung"
+      name: "Pump Mains Voltage"
     dc_voltage:
-      name: "Pumpe Zwischenkreisspannung"
+      name: "Pump DC Link Voltage"
     current:
-      name: "Pumpe Strom"
+      name: "Pump Current"
     speed:
-      name: "Pumpe Drehzahl"
+      name: "Pump Speed"
     aux_temperature:
-      name: "Pumpe Elektroniktemperatur"
+      name: "Pump Electronics Temperature"
     starts:
-      name: "Pumpe Starts"
+      name: "Pump Starts"
     operating_hours:
-      name: "Pumpe Betriebsstunden"
+      name: "Pump Operating Hours"
     power_on_hours:
-      name: "Pumpe Einschaltstunden"
+      name: "Pump Power-On Hours"
     media_temperature:
-      name: "Pumpe Medientemperatur"
+      name: "Pump Media Temperature"
     pcb_temperature:
-      name: "Pumpe Platinentemperatur"
+      name: "Pump PCB Temperature"
     controlbox_temperature:
-      name: "Pumpe Controlbox-Temperatur"
-    energy:                     # Zaehler der Pumpe (wie "Kumulierte Leistungsaufnahme" in der App)
-      name: "Pumpe Energie"
-    # Betriebsart/Regelart als Klartext (Zahlencodes: operation_mode / control_mode, siehe README)
+      name: "Pump Control Box Temperature"
+    energy:                     # pump's own counter (as "Accumulated power consumption" in the app)
+      name: "Pump Energy"
+    # Operation / control mode as text (numeric codes: operation_mode / control_mode, see README)
     operation_mode_text:
-      name: "Pumpe Betriebsart"
+      name: "Pump Operation Mode"
     control_mode_text:
-      name: "Pumpe Regelart"
-    # Sollwert: je nach Regelart in m, m3/h oder 1/min, die anderen Sensoren sind dann "unbekannt"
+      name: "Pump Control Mode"
+    # Setpoint: in m, m3/h or rpm depending on control mode; the others are then "unknown"
     setpoint_head:
-      name: "Pumpe Sollwert Förderhöhe"
+      name: "Pump Setpoint Head"
     setpoint_flow:
-      name: "Pumpe Sollwert Durchfluss"
+      name: "Pump Setpoint Flow"
     setpoint_speed:
-      name: "Pumpe Sollwert Drehzahl"
+      name: "Pump Setpoint Speed"
     setpoint_actual:
-      name: "Pumpe Zielwert aktuell"
-    # Einstellungen und Status
+      name: "Pump Current Target"
+    # Settings and status
     night_setback_enabled:
-      name: "Pumpe Nachtabsenkung aktiviert"
+      name: "Pump Night Setback Enabled"
     night_mode:
-      name: "Pumpe Nachtbetrieb"
+      name: "Pump Night Mode"
     air_detection_enabled:
-      name: "Pumpe Lufterkennung aktiviert"
+      name: "Pump Air Detection Enabled"
     air_detections:
-      name: "Pumpe Lufterkennungen"
+      name: "Pump Air Detections"
     venting_active:
-      name: "Pumpe Entlüftung aktiv"
+      name: "Pump Venting Active"
     venting_status:
-      name: "Pumpe Entlüftung Status"
+      name: "Pump Venting Status"
     connected:
-      name: "Pumpe verbunden"
+      name: "Pump Connected"
 
-# Bedienelemente (schreiben auf die Pumpe, Zustand wird immer zurueckgelesen)
+# Controls (write to the pump; state is always read back)
 switch:
   - platform: grundfos_alpha2go
     pump:
-      name: "Pumpe"
+      name: "Pump"
     night_setback:
-      name: "Pumpe Nachtabsenkung"
+      name: "Pump Night Setback"
     air_detection:
-      name: "Pumpe Lufterkennung"
+      name: "Pump Air Detection"
 
 select:
   - platform: grundfos_alpha2go
     control_mode:
-      name: "Pumpe Regelart"
+      name: "Pump Control Mode"
 
 number:
   - platform: grundfos_alpha2go
-    setpoint_head:              # nur bei Prop. Druck / Konstantdruck
-      name: "Pumpe Sollwert Förderhöhe"
+    setpoint_head:              # proportional / constant pressure only
+      name: "Pump Setpoint Head"
       mode: box
-    setpoint_flow:              # nur bei Konstantem Förderstrom
-      name: "Pumpe Sollwert Förderstrom"
-    setpoint_speed:             # nur bei Konstantdrehzahl
-      name: "Pumpe Sollwert Drehzahl"
+    setpoint_flow:              # constant flow only
+      name: "Pump Setpoint Flow"
+    setpoint_speed:             # constant speed only
+      name: "Pump Setpoint Speed"
 
 button:
   - platform: grundfos_alpha2go
     venting_start:
-      name: "Pumpe System-Entlüftung starten"
+      name: "Pump Start System Venting"
     venting_stop:
-      name: "Pumpe System-Entlüftung stoppen"
+      name: "Pump Stop System Venting"

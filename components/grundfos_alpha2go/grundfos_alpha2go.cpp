@@ -16,13 +16,13 @@ namespace grundfos_alpha2go {
 
 static const char *const TAG = "grundfos_alpha2go";
 
-static const uint32_t ENC_TIMEOUT_MS = 1500;    // so lange auf AUTH_CMPL warten, danach trotzdem weiter
+static const uint32_t ENC_TIMEOUT_MS = 1500;    // wait this long for AUTH_CMPL, then continue anyway
 static const uint32_t CCCD_TIMEOUT_MS = 2000;
-static const uint32_t REPLY_TIMEOUT_MS = 1000;  // wie die GO-App (GENI_TIMEOUT)
-static const uint32_t STACK_RESET_MIN_GAP_MS = 30000;  // BLE-Stack hoechstens alle 30 s neu starten
-static const uint32_t BLE_RESET_WDT_MS = 30000;        // Task-Watchdog waehrend des Stack-Neustarts
-static const uint32_t AUTH_FAIL_DISCONNECT_MS = 5000; // nach abgelehnter Verschluesselung spaetestens dann trennen
-static const uint32_t MIN_TX_GAP_MS = 30;       // Pumpe antwortet nach ca. 80 ms; nur eine Anfrage gleichzeitig
+static const uint32_t REPLY_TIMEOUT_MS = 1000;  // same as the GO app (GENI_TIMEOUT)
+static const uint32_t STACK_RESET_MIN_GAP_MS = 30000;  // restart BLE stack at most every 30 s
+static const uint32_t BLE_RESET_WDT_MS = 30000;        // task watchdog during stack restart
+static const uint32_t AUTH_FAIL_DISCONNECT_MS = 5000; // disconnect by then at the latest after rejected encryption
+static const uint32_t MIN_TX_GAP_MS = 30;       // pump replies after ~80 ms; one request at a time
 
 uint32_t GrundfosAlpha2Go::t_last_stack_reset_ = 0;
 
@@ -71,10 +71,10 @@ void GrundfosAlpha2Go::dump_config() {
   LOG_NUMBER("  ", "Setpoint speed", this->setpoint_speed_number_);
 }
 
-static constexpr float PA_PER_M = 9806.65f;  // 1 m Wassersaeule
-static constexpr uint8_t SOURCE_AIR_VENTING = 111;  // ControlSource AirVenting (an HK1 bei "Nur Pumpe entlueften")
+static constexpr float PA_PER_M = 9806.65f;  // 1 m water column
+static constexpr uint8_t SOURCE_AIR_VENTING = 111;  // ControlSource AirVenting (seen on HK1 during "vent pump only")
 
-// Abfragen in Sende-Reihenfolge
+// Queries in send order
 struct RequestDef {
   uint16_t bit;
   uint8_t obj;
@@ -96,19 +96,19 @@ const char *GrundfosAlpha2Go::req_name_(uint16_t req) {
   return "?";
 }
 
-// Betriebsart (Enum OperationMode im GENI-Profil): Name fuer das Log, Klartext fuer HA
+// Operation mode (enum OperationMode in the GENI profile): name for the log, text for HA
 struct OperationModeDef {
   const char *name;
   const char *text;
 };
 static const OperationModeDef OPERATION_MODES[] = {
-    {"Auto", "Auto"},           {"Stop", "Stopp"},
+    {"Auto", "Auto"},           {"Stop", "Stop"},
     {"Min", "Minimum"},         {"Max", "Maximum"},
-    {"UserDefined", "Benutzerdefiniert"},       {"ForcedStart", "Zwangsstart"},
-    {"NoCmd", "Kein Befehl"},   {"Hand", "Hand"},
-    {"Standby", "Standby"},     {"StopWithoutDelay", "Stopp sofort"},
-    {"EmergencyRun", "Notbetrieb"},             {"UserDefined2", "Benutzerdefiniert 2"},
-    {"SetPumpsToLocalMode", "Lokalbetrieb"},
+    {"UserDefined", "User defined"},       {"ForcedStart", "Forced start"},
+    {"NoCmd", "No command"},   {"Hand", "Hand"},
+    {"Standby", "Standby"},     {"StopWithoutDelay", "Stop immediately"},
+    {"EmergencyRun", "Emergency run"},             {"UserDefined2", "User defined 2"},
+    {"SetPumpsToLocalMode", "Local mode"},
 };
 static const OperationModeDef *operation_mode_def(uint8_t v) {
   return v < sizeof(OPERATION_MODES) / sizeof(OPERATION_MODES[0]) ? &OPERATION_MODES[v] : nullptr;
@@ -118,33 +118,33 @@ static const char *operation_mode_name(uint8_t v) {
   return m != nullptr ? m->name : "?";
 }
 
-// Regelart (Enum ControlMode). kind: Einheit des set_point -> Druck (Pa), Durchfluss (m3/s), Drehzahl (1/min)
+// Control mode (enum ControlMode). kind: set_point unit -> pressure (Pa), flow (m3/s), speed (1/min)
 struct ControlModeDef {
   uint8_t code;
   const char *name;
   const char *text;
   SetpointKind kind;
 };
-// Klartexte an die Begriffe der GO-App angelehnt ("Prop. Druck", "Foerderstrom"). In der App wird AutoAdapt
-// innerhalb von Prop. Druck bzw. Konstantdruck aktiviert; die Pumpe meldet das als 13 bzw. 14 (an HK1 geprueft).
+// Texts follow the GO app terminology. In the app AutoAdapt is enabled within proportional or constant
+// pressure; the pump reports that as 13 or 14 respectively (verified on HK1).
 static const ControlModeDef CONTROL_MODES[] = {
-    {0, "ConstantPressure", "Konstantdruck", SP_PRESSURE},  // Pa an HK1 verifiziert (Schreibtest)
-    {1, "ProportionalPressure", "Prop. Druck", SP_PRESSURE},  // Pa an HK1 verifiziert
-    {2, "ConstantSpeed", "Konstantdrehzahl", SP_SPEED},       // 1/min an HK1 verifiziert
+    {0, "ConstantPressure", "Constant pressure", SP_PRESSURE},  // Pa verified on HK1 (write test)
+    {1, "ProportionalPressure", "Proportional pressure", SP_PRESSURE},  // Pa verified on HK1
+    {2, "ConstantSpeed", "Constant speed", SP_SPEED},       // 1/min verified on HK1
     {5, "AutoAdapt", "AutoAdapt", SP_PRESSURE},
-    {6, "ConstantTemperature", "Konstanttemperatur", SP_UNKNOWN},
-    {7, "ClosedLoopSensor", "Sensorregelung", SP_UNKNOWN},
-    {8, "ConstantFlow", "Konstanter Förderstrom", SP_FLOW},  // m3/s an HK1 verifiziert
-    {9, "ConstantLevel", "Konstantes Niveau", SP_UNKNOWN},
+    {6, "ConstantTemperature", "Constant temperature", SP_UNKNOWN},
+    {7, "ClosedLoopSensor", "Closed loop sensor", SP_UNKNOWN},
+    {8, "ConstantFlow", "Constant flow", SP_FLOW},  // m3/s verified on HK1
+    {9, "ConstantLevel", "Constant level", SP_UNKNOWN},
     {10, "FlowAdapt", "FlowAdapt", SP_FLOW},
-    {11, "ConstantDifferentialPressure", "Konstanter Differenzdruck", SP_PRESSURE},
-    {12, "ConstantDifferentialTemperature", "Konstante Differenztemperatur", SP_UNKNOWN},
-    {13, "AutoAdaptRadiator", "Prop. Druck (AutoAdapt)", SP_PRESSURE},    // Pa an HK1 verifiziert
-    {14, "AutoAdaptUnderfloor", "Konstantdruck (AutoAdapt)", SP_PRESSURE},  // Pa an HK1 verifiziert
-    {15, "AutoAdaptRadiatorAndUnderfloor", "AutoAdapt Heizkörper + Fußboden", SP_PRESSURE},
-    {24, "UserDefined", "Benutzerdefiniert", SP_UNKNOWN},
-    {26, "ProportionalDifferentialPressure", "Proportionaler Differenzdruck", SP_PRESSURE},
-    {254, "None", "Keine", SP_UNKNOWN},
+    {11, "ConstantDifferentialPressure", "Constant differential pressure", SP_PRESSURE},
+    {12, "ConstantDifferentialTemperature", "Constant differential temperature", SP_UNKNOWN},
+    {13, "AutoAdaptRadiator", "Proportional pressure (AutoAdapt)", SP_PRESSURE},    // Pa verified on HK1
+    {14, "AutoAdaptUnderfloor", "Constant pressure (AutoAdapt)", SP_PRESSURE},  // Pa verified on HK1
+    {15, "AutoAdaptRadiatorAndUnderfloor", "AutoAdapt radiator + underfloor", SP_PRESSURE},
+    {24, "UserDefined", "User defined", SP_UNKNOWN},
+    {26, "ProportionalDifferentialPressure", "Proportional differential pressure", SP_PRESSURE},
+    {254, "None", "None", SP_UNKNOWN},
 };
 static const ControlModeDef *control_mode_def(uint8_t v) {
   for (const auto &m : CONTROL_MODES)
@@ -160,11 +160,11 @@ static SetpointKind setpoint_kind(uint8_t ctrl) {
   return m != nullptr ? m->kind : SP_UNKNOWN;
 }
 
-// ---- Schreibzugriffe ----
-// Regelarten des Select, Reihenfolge wie CONTROL_MODE_OPTIONS in select.py
+// ---- Writes ----
+// Control modes of the select, same order as CONTROL_MODE_OPTIONS in select.py
 static const uint8_t SELECT_CONTROL_CODES[] = {1, 0, 13, 14, 8, 2};
 static constexpr size_t NUM_SELECT_CONTROL_CODES = sizeof(SELECT_CONTROL_CODES) / sizeof(SELECT_CONTROL_CODES[0]);
-// Startwerte, wenn in eine Regelart gewechselt wird, deren Sollwert in dieser Sitzung noch nie gelesen wurde
+// Default values when switching to a control mode whose setpoint has not been read this session
 static constexpr float DEFAULT_SP_PRESSURE = 2.0f * PA_PER_M;  // 2 m
 static constexpr float DEFAULT_SP_FLOW = 1.0f / 3600.0f;       // 1 m3/h
 static constexpr float DEFAULT_SP_SPEED = 3000.0f;             // 1/min
@@ -195,7 +195,7 @@ bool GrundfosAlpha2Go::queue_write_(const uint8_t *frame, size_t len, const char
   return true;
 }
 
-// Nach Antwort oder Timeout: Wirkung sofort zuruecklesen
+// After reply or timeout: read back the effect immediately
 void GrundfosAlpha2Go::finish_write_(const char *why) {
   ESP_LOGD(TAG, "%s: %s - reading back", this->write_label_, why);
   this->inflight_ = false;
@@ -203,7 +203,7 @@ void GrundfosAlpha2Go::finish_write_(const char *why) {
   this->pending_mask_ |= REQ_AFTER_WRITE;
 }
 
-// Antwort pruefen: Class 3 -> APDU-ACK (obere 2 Bit) muss 0 sein; Class 10 -> zusaetzlich Statusbyte 0
+// Check reply: Class 3 -> APDU ACK (top 2 bits) must be 0; Class 10 -> status byte must also be 0
 void GrundfosAlpha2Go::check_write_reply_(const uint8_t *d, size_t n) {
   if (n < 6 || d[0] != geni::SD_REPLY) {
     ESP_LOGW(TAG, "%s: unexpected reply %s", this->write_label_, format_hex_pretty(d, n).c_str());
@@ -214,15 +214,15 @@ void GrundfosAlpha2Go::check_write_reply_(const uint8_t *d, size_t n) {
   if (ack == 0 && status == 0) {
     ESP_LOGI(TAG, "%s: accepted", this->write_label_);
   } else {
-    // ACK 1/2/3: Klasse unbekannt / ID unbekannt / Operation nicht erlaubt;
-    // Status 1: Operation unbekannt, 4: Objekt/Typ nicht gefunden
+    // ACK 1/2/3: unknown class / unknown ID / operation not allowed;
+    // status 1: unknown operation, 4: object/type not found
     ESP_LOGE(TAG, "%s: rejected by pump (class %u, ack %u, status %u): %s", this->write_label_, cls, ack, status,
              format_hex_pretty(d, n).c_str());
   }
 }
 
 bool GrundfosAlpha2Go::queue_set_operation_(uint8_t mode, uint8_t ctrl, float setpoint_si, const char *label) {
-  // 86/6 OperationStatusRequest (Typ 303 v1): u8 source, u8 mode, u8 control, float setpoint (SI, Big Endian)
+  // 86/6 OperationStatusRequest (type 303 v1): u8 source, u8 mode, u8 control, float setpoint (SI, Big Endian)
   uint8_t d[7] = {this->op_src_, mode, ctrl};
   uint32_t u;
   memcpy(&u, &setpoint_si, 4);
@@ -240,7 +240,7 @@ bool GrundfosAlpha2Go::write_switch(SwitchKind kind, bool state) {
   uint8_t f[geni::MAX_TX_FRAME];
   switch (kind) {
     case SwitchKind::PUMP: {
-      // Class 3 START (= Auto) / STOP; wirkt auf die lokale Anforderung 86/6 wie die GO-App
+      // Class 3 START (= Auto) / STOP; acts on the local request 86/6 like the GO app
       const size_t n = geni::build_command(f, state ? CMD_START : CMD_STOP);
       return this->queue_write_(f, n, state ? "Pump start" : "Pump stop");
     }
@@ -250,7 +250,7 @@ bool GrundfosAlpha2Go::write_switch(SwitchKind kind, bool state) {
       return this->queue_write_(f, n, state ? "Night setback on" : "Night setback off");
     }
     case SwitchKind::AIR_DETECTION: {
-      // 88/600 wird komplett geschrieben: zuletzt gelesene Werte, nur "enabled" (Byte 7) geaendert
+      // 88/600 is written in full: last read values, only "enabled" (byte 7) changed
       if (!this->air_cfg_valid_) {
         ESP_LOGW(TAG, "Air detection: not sent - configuration (88/600) not read yet");
         return false;
@@ -273,13 +273,13 @@ bool GrundfosAlpha2Go::write_control_mode(uint8_t ctrl) {
   const SetpointKind kind = setpoint_kind(ctrl);
   float sp;
   if (kind == setpoint_kind(this->op_ctrl_) && !is_autoadapt(this->op_ctrl_)) {
-    sp = this->op_sp_;  // gleiche Einheit (z. B. Prop. Druck -> Konstantdruck): Sollwert uebernehmen
+    sp = this->op_sp_;  // same unit (e.g. proportional -> constant pressure): keep setpoint
   } else if (std::isfinite(this->last_sp_[kind])) {
     sp = this->last_sp_[kind];
   } else {
     sp = kind == SP_FLOW ? DEFAULT_SP_FLOW : kind == SP_SPEED ? DEFAULT_SP_SPEED : DEFAULT_SP_PRESSURE;
   }
-  // Bei AutoAdapt setzt die Pumpe ihren eigenen Sollwert, der mitgeschickte wird ignoriert (an HK1 geprueft)
+  // Under AutoAdapt the pump sets its own setpoint; the one sent is ignored (verified on HK1)
   return this->queue_set_operation_(this->op_mode_, ctrl, sp, "Control mode");
 }
 
@@ -303,7 +303,7 @@ bool GrundfosAlpha2Go::write_setpoint(SetpointKind kind, float value) {
 }
 
 bool GrundfosAlpha2Go::press_button(ButtonKind kind) {
-  // 88/612 SystemAirVentingCommandAndStatus (Typ 971 v1): u8 cmd (0 Stop, 1 StartManual), Rest 0
+  // 88/612 SystemAirVentingCommandAndStatus (type 971 v1): u8 cmd (0 Stop, 1 StartManual), rest 0
   const bool start = kind == ButtonKind::VENTING_START;
   const uint8_t d[5] = {(uint8_t) (start ? 1 : 0), 0, 0, 0, 0};
   uint8_t f[geni::MAX_TX_FRAME];
@@ -317,7 +317,7 @@ void GrundfosAlpha2Go::send_raw_class10(const std::vector<uint8_t> &apdu) {
   this->queue_write_(f, n, "Raw class 10");
 }
 
-// Bedienelemente aus der lokalen Anforderung (86/6) aktualisieren
+// Update controls from the local request (86/6)
 void GrundfosAlpha2Go::publish_controls_() {
   if (!this->op_valid_) return;
   if (this->pump_switch_ != nullptr) this->pump_switch_->publish_state(this->op_mode_ != MODE_STOP);
@@ -354,7 +354,7 @@ void GrundfosAlpha2Go::setup() {
       this->controlbox_temperature_sensor_ != nullptr)
     this->wanted_mask_ |= REQ_TEMPERATURE;
   if (this->energy_sensor_ != nullptr) this->wanted_mask_ |= REQ_ENERGY;
-  // 86/6 und 86/8 nur zum Vergleich im Log; die Sensoren kommen aus 86/7
+  // 86/6 and 86/8 only for comparison in the log; sensors come from 86/7
   if (this->operation_mode_sensor_ != nullptr || this->control_mode_sensor_ != nullptr ||
       this->setpoint_sensor_ != nullptr || this->setpoint_head_sensor_ != nullptr ||
       this->setpoint_flow_sensor_ != nullptr || this->setpoint_speed_sensor_ != nullptr ||
@@ -366,8 +366,8 @@ void GrundfosAlpha2Go::setup() {
   if (this->air_detection_enabled_binary_sensor_ != nullptr) this->wanted_mask_ |= REQ_AIR_CONFIG;
   if (this->air_detections_sensor_ != nullptr) this->wanted_mask_ |= REQ_AIR_COUNTER;
   if (this->venting_active_binary_sensor_ != nullptr || this->venting_status_text_sensor_ != nullptr)
-    this->wanted_mask_ |= REQ_VENTING | REQ_OP_REALIZED | REQ_OP_TEMP;  // 86/8, 86/9 fuer "Nur Pumpe entlueften"
-  // Bedienelemente
+    this->wanted_mask_ |= REQ_VENTING | REQ_OP_REALIZED | REQ_OP_TEMP;  // 86/8, 86/9 for "vent pump only"
+  // Controls
   if (this->pump_switch_ != nullptr || this->control_mode_select_ != nullptr ||
       this->setpoint_head_number_ != nullptr || this->setpoint_flow_number_ != nullptr ||
       this->setpoint_speed_number_ != nullptr)
@@ -387,7 +387,7 @@ void GrundfosAlpha2Go::reset_state_() {
   this->inflight_ = false;
   this->last_req_ = 0;
   this->pending_mask_ = 0;
-  this->write_count_ = 0;  // nicht gesendete Schreibzugriffe verfallen bei Trennung
+  this->write_count_ = 0;  // unsent writes are dropped on disconnect
   this->op_valid_ = false;
   this->air_cfg_valid_ = false;
   this->system_venting_state_ = 0;
@@ -411,7 +411,7 @@ void GrundfosAlpha2Go::publish_bin_(binary_sensor::BinarySensor *s, bool value) 
   if (s != nullptr) s->publish_state(value);
 }
 
-// Entlueftung: Anlage+Pumpe aus 88/612, Nur-Pumpe aus 86/8 (Steuerquelle AirVenting)
+// Venting: system+pump from 88/612, pump-only from 86/8 (control source AirVenting)
 void GrundfosAlpha2Go::publish_venting_() {
   const uint8_t sys = this->system_venting_state_;
   this->publish_bin_(this->venting_active_binary_sensor_, sys != 0 || this->pump_venting_);
@@ -419,22 +419,22 @@ void GrundfosAlpha2Go::publish_venting_() {
   char buf[32];
   const char *text;
   if (sys == 1) {
-    text = "Anlage und Pumpe (manuell)";
+    text = "System and pump (manual)";
   } else if (sys == 2) {
-    text = "Anlage und Pumpe (automatisch)";
+    text = "System and pump (automatic)";
   } else if (sys != 0) {
-    snprintf(buf, sizeof(buf), "Unbekannt (%u)", sys);
+    snprintf(buf, sizeof(buf), "Unknown (%u)", sys);
     text = buf;
   } else if (this->pump_venting_) {
-    text = "Nur Pumpe";
+    text = "Pump only";
   } else {
-    text = "Inaktiv";
+    text = "Inactive";
   }
   this->publish_text_(this->venting_status_text_sensor_, text);
 }
 
-// Nach einer Trennung alle Entitaeten auf "unbekannt" setzen (Home Assistant: missing_state). Ein eigenes
-// "nicht verfuegbar" pro Entitaet kennt die ESPHome-API nicht; das gibt es nur, wenn der ganze ESP offline ist.
+// After a disconnect set all entities to "unknown" (Home Assistant: missing_state). The ESPHome API has no
+// per-entity "unavailable"; that only exists when the whole ESP is offline.
 void GrundfosAlpha2Go::publish_all_unknown_() {
   sensor::Sensor *all[] = {this->flow_sensor_,
                            this->head_sensor_,
@@ -500,7 +500,7 @@ void GrundfosAlpha2Go::publish_all_unknown_() {
 
 void GrundfosSwitch::invalidate() {
   if (!this->has_state()) return;
-  this->publish_dedup_.next_unknown();  // sonst wuerde derselbe Zustand nach dem Wiederverbinden verworfen
+  this->publish_dedup_.next_unknown();  // otherwise the same state would be dropped after reconnecting
   this->set_has_state(false);
 #ifdef USE_CONTROLLER_REGISTRY
   ControllerRegistry::notify_switch_update(this);
@@ -510,11 +510,11 @@ void GrundfosSwitch::invalidate() {
 void GrundfosAlpha2Go::gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param) {
   const uint8_t *bda = this->parent_->get_remote_bda();
   switch (event) {
-    case ESP_GAP_BLE_SEC_REQ_EVT:  // Pumpe fordert selbst Sicherheit an
+    case ESP_GAP_BLE_SEC_REQ_EVT:  // pump requests security itself
       if (memcmp(param->ble_security.ble_req.bd_addr, bda, 6) == 0)
         ESP_LOGD(TAG, "[%s] Security request from pump", this->parent_->address_str());
       return;
-    case ESP_GAP_BLE_KEY_EVT:  // nur bei einer neuen Kopplung
+    case ESP_GAP_BLE_KEY_EVT:  // only on a new pairing
       if (memcmp(param->ble_security.ble_key.bd_addr, bda, 6) == 0)
         ESP_LOGI(TAG, "[%s] New key received from pump (type 0x%02x) - new pairing", this->parent_->address_str(),
                  param->ble_security.ble_key.key_type);
@@ -540,12 +540,12 @@ void GrundfosAlpha2Go::gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_g
     this->auth_fail_count_ = 0;
     return;
   }
-  // reason 82 = ESP_AUTH_SMP_PAIR_NOT_SUPPORT: Der ESP hat eine NEUE Kopplung gestartet statt mit dem gespeicherten
-  // LTK zu verschluesseln, und die Pumpe lehnt ab. Bluedroid koppelt neu nur, wenn der Schluessel im RAM fehlt
-  // (btm_ble_set_encryption). Der Bond steht dann noch im NVS: Bluedroid entfernt Geraeteeintraege an mehreren Stellen
-  // nur aus dem RAM (u. a. bta_dm bei Kopplungsfehlern als Central mit
-  // CONFIG_BT_BLE_SMP_REMOVE_BOND_ON_PAIR_FAIL_AS_CENTRAL=y; bei reason 82 bleibt der NVS-Eintrag stehen).
-  // Ab dann scheitert jede Verbindung, bis der Stack neu startet und die Bonds wieder aus dem NVS laedt.
+  // reason 82 = ESP_AUTH_SMP_PAIR_NOT_SUPPORT: the ESP started a NEW pairing instead of encrypting with the stored
+  // LTK, and the pump rejects it. Bluedroid only re-pairs when the key is missing from RAM
+  // (btm_ble_set_encryption). The bond is still in NVS: in several places Bluedroid removes device entries
+  // from RAM only (e.g. bta_dm on pairing failures as central with
+  // CONFIG_BT_BLE_SMP_REMOVE_BOND_ON_PAIR_FAIL_AS_CENTRAL=y; with reason 82 the NVS entry stays).
+  // From then on every connection fails until the stack restarts and reloads the bonds from NVS.
   this->auth_failed_ = true;
   this->auth_fail_count_++;
   const int reason = ac.fail_reason;
@@ -585,7 +585,7 @@ void GrundfosAlpha2Go::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_
         ESP_LOGD(TAG, "[%s] Connected, requesting encryption (bonds in NVS: %u, pump: %s)",
                  this->parent_->address_str(), bonds, YESNO(stored));
       }
-      // Die Pumpe trennt unverschluesselte Clients nach ca. 2 s -> sofort Verschluesselung (gespeicherter Bond).
+      // The pump drops unencrypted clients after ~2 s -> encrypt immediately (stored bond).
       esp_err_t r = esp_ble_set_encryption(param->connect.remote_bda, ESP_BLE_SEC_ENCRYPT);
       if (r != ESP_OK) ESP_LOGW(TAG, "esp_ble_set_encryption failed (%d)", (int) r);
       this->stage_ = Stage::WAIT_ENC;
@@ -595,8 +595,8 @@ void GrundfosAlpha2Go::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_
     case ESP_GATTC_SEARCH_CMPL_EVT: {
       auto *chr = this->parent_->get_characteristic(GENI_SERVICE, GENI_CHAR);
       if (chr == nullptr) {
-        // Nach abgelehnter Verschluesselung bzw. Trennung meldet ESPHome die Service-Suche teils noch als
-        // abgeschlossen, ohne Dienste -> dann kein Fehler
+        // After rejected encryption or a disconnect ESPHome sometimes still reports service discovery
+        // as complete with no services -> not an error then
         if (this->stage_ == Stage::IDLE || this->auth_failed_) {
           ESP_LOGD(TAG, "[%s] Service discovery finished without GENI service (connection not usable)",
                    this->parent_->address_str());
@@ -621,14 +621,14 @@ void GrundfosAlpha2Go::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_
       break;
     }
     case ESP_GATTC_REG_FOR_NOTIFY_EVT: {
-      // Handles sind gemerkt -> GATT-Cache darf freigegeben werden.
+      // Handles are stored -> GATT cache may be released.
       this->node_state = espbt::ClientState::ESTABLISHED;
       break;
     }
     case ESP_GATTC_WRITE_DESCR_EVT: {
       if (param->write.handle != this->cccd_handle_) break;
-      // ESPHome schreibt den CCCD beim register_for_notify teils selbst -> zweite Bestaetigung ignorieren,
-      // sonst startet die Erstabfrage neu, waehrend schon eine Abfrage laeuft.
+      // ESPHome sometimes writes the CCCD itself in register_for_notify -> ignore the second confirmation,
+      // otherwise the initial query restarts while a query is already running.
       if (this->stage_ != Stage::WAIT_CCCD) break;
       if (param->write.status == ESP_GATT_OK) {
         ESP_LOGD(TAG, "[%s] Notifications enabled", this->parent_->address_str());
@@ -643,10 +643,10 @@ void GrundfosAlpha2Go::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_
     case ESP_GATTC_NOTIFY_EVT: {
       if (param->notify.handle != this->data_handle_) break;
       ESP_LOGVV(TAG, "RX %d bytes", (int) param->notify.value_len);
-      if (this->inflight_ && this->last_req_ == REQ_WRITE) {  // Antwort auf einen Schreibzugriff
+      if (this->inflight_ && this->last_req_ == REQ_WRITE) {  // reply to a write
         this->check_write_reply_(param->notify.value, param->notify.value_len);
         this->finish_write_("reply received");
-      } else if (this->inflight_ && (this->last_req_ & REQ_DIAG_MASK))  // auch Antworten, die der Parser verwirft
+      } else if (this->inflight_ && (this->last_req_ & REQ_DIAG_MASK))  // including replies the parser discards
         ESP_LOGV(TAG, "%s raw RX: %s", req_name_(this->last_req_),
                  format_hex_pretty(param->notify.value, param->notify.value_len).c_str());
       int crc_errors = this->rx_.feed(param->notify.value, param->notify.value_len,
@@ -656,7 +656,7 @@ void GrundfosAlpha2Go::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_
     }
     case ESP_GATTC_DISCONNECT_EVT: {
       if (memcmp(param->disconnect.remote_bda, this->parent_->get_remote_bda(), 6) != 0) break;
-      // reason: 0x08 Supervision Timeout, 0x13 von der Pumpe getrennt, 0x16 vom ESP getrennt, 0x3D MIC-Fehler
+      // reason: 0x08 Supervision Timeout, 0x13 disconnected by pump, 0x16 disconnected by ESP, 0x3D MIC failure
       ESP_LOGI(TAG, "[%s] Disconnected (reason 0x%02x, stage %u, encrypted %s)", this->parent_->address_str(),
                (unsigned) param->disconnect.reason, (unsigned) this->stage_, YESNO(this->enc_ok_));
       this->node_state = espbt::ClientState::IDLE;
@@ -681,7 +681,7 @@ void GrundfosAlpha2Go::write_cccd_() {
 }
 
 void GrundfosAlpha2Go::send_frame_(const uint8_t *frame, size_t len) {
-  // Lange Frames in Stuecken zu BLE_CHUNK Byte senden (wie die Pumpe ihre Antworten zerlegt)
+  // Send long frames in BLE_CHUNK-byte pieces (the way the pump splits its replies)
   uint8_t tmp[geni::BLE_CHUNK];
   for (size_t off = 0; off < len; off += geni::BLE_CHUNK) {
     const size_t n = std::min(geni::BLE_CHUNK, len - off);
@@ -714,17 +714,17 @@ void GrundfosAlpha2Go::loop() {
     if (this->t_last_stack_reset_ != 0 && now - this->t_last_stack_reset_ < STACK_RESET_MIN_GAP_MS) {
       ESP_LOGD(TAG, "BLE stack restarted %us ago - not again yet", (unsigned) ((now - this->t_last_stack_reset_) / 1000));
     } else if (esp32_ble::global_ble != nullptr) {
-      // Betrifft alle BLE-Funktionen dieses ESP (Tracker, weitere BLE-Clients); andere Komponenten laufen weiter.
-      // Ablauf: erst die Verbindung trennen, dann den Stack abbauen. Der Abbau (esp_bluedroid_disable/deinit,
-      // Controller) blockiert den Haupttask mehrere Sekunden; auf dem ESP32 gilt dafuer der normale Task-Watchdog
-      // (5 s, ESPHome verlaengert ihn nur bei ESP32-Hosted). Deshalb den Watchdog vorher voruebergehend verlaengern.
+      // Affects all BLE functions of this ESP (tracker, other BLE clients); other components keep running.
+      // Sequence: disconnect first, then tear down the stack. Teardown (esp_bluedroid_disable/deinit,
+      // controller) blocks the main task for several seconds; on the ESP32 the normal task watchdog applies
+      // (5 s, ESPHome only extends it for ESP32-Hosted). So temporarily extend the watchdog first.
       this->t_last_stack_reset_ = now;
       ESP_LOGW(TAG, "Restarting BLE stack to reload bonds from NVS");
       this->parent_->disconnect();
       this->set_timeout("ble_disable", 1500, []() {
         esp_task_wdt_config_t cfg = {.timeout_ms = BLE_RESET_WDT_MS, .idle_core_mask = 0, .trigger_panic = true};
         esp_task_wdt_reconfigure(&cfg);
-        // Der eigentliche Abbau laeuft danach in esp32_ble::loop() ("esp32_ble took a long time" ist dort normal)
+        // The actual teardown then runs in esp32_ble::loop() ("esp32_ble took a long time" is normal there)
         if (esp32_ble::global_ble != nullptr) esp32_ble::global_ble->disable();
       });
       this->set_timeout("ble_enable", 4000, []() {
@@ -740,10 +740,10 @@ void GrundfosAlpha2Go::loop() {
   }
   switch (this->stage_) {
     case Stage::WAIT_ENC:
-      // Verschluesselung abgelehnt: unverschluesselt antwortet die Pumpe nicht und trennt gleich -> nichts senden,
-      // auf die Trennung warten; ESPHome verbindet danach automatisch neu.
+      // Encryption rejected: unencrypted, the pump doesn't reply and disconnects soon -> send nothing,
+      // wait for the disconnect; ESPHome then reconnects automatically.
       if (this->auth_failed_) {
-        if (now - this->t_stage_ > AUTH_FAIL_DISCONNECT_MS) {  // Pumpe trennt nicht selbst -> neu anfangen
+        if (now - this->t_stage_ > AUTH_FAIL_DISCONNECT_MS) {  // pump didn't disconnect itself -> start over
           ESP_LOGD(TAG, "[%s] Disconnecting after rejected encryption", this->parent_->address_str());
           this->parent_->disconnect();
           this->t_stage_ = now;
@@ -760,7 +760,7 @@ void GrundfosAlpha2Go::loop() {
       if (now - this->t_stage_ > CCCD_TIMEOUT_MS && this->cccd_tries_ < 3) this->write_cccd_();
       break;
     case Stage::HELLO: {
-      // Erstabfrage der GO-App (zweimal): Class 2, IDs 148/149/150 = unit_family/type/version
+      // GO app initial query (twice): Class 2, IDs 148/149/150 = unit_family/type/version
       if (this->hello_sent_ < 2 && now - this->t_last_tx_ >= MIN_TX_GAP_MS) {
         static const uint8_t ids[] = {148, 149, 150};
         uint8_t f[16];
@@ -808,7 +808,7 @@ void GrundfosAlpha2Go::update() {
   if (this->stage_ != Stage::POLLING) return;
   uint16_t mask = this->wanted_mask_;
   if (++this->update_count_ < SLOW_EVERY) {
-    mask &= ~REQ_SLOW_MASK;  // Einstellungen nur jedes SLOW_EVERY-te Mal (nach dem Verbinden immer)
+    mask &= ~REQ_SLOW_MASK;  // settings only every SLOW_EVERY-th time (always after connecting)
   } else {
     this->update_count_ = 0;
   }
@@ -816,20 +816,20 @@ void GrundfosAlpha2Go::update() {
 }
 
 void GrundfosAlpha2Go::handle_reply_(const geni::Reply &r) {
-  const uint16_t req = this->inflight_ ? this->last_req_ : 0;  // zu welcher Abfrage die Antwort gehoert
+  const uint16_t req = this->inflight_ ? this->last_req_ : 0;  // which query this reply belongs to
   this->inflight_ = false;
   const uint8_t *d = r.data;
   ESP_LOGV(TAG, "Reply type=%u version=%u len=%u", r.type, r.version, r.len);
   switch (r.type) {
-    case geni::TYPE_PROCESS_VALUES_EXT:  // 93/290, v2, 36 Byte
+    case geni::TYPE_PROCESS_VALUES_EXT:  // 93/290, v2, 36 bytes
       if (r.len >= 32) {
-        // Pumpe liefert Flow/Head fertig umgerechnet (auf ALPHA2 GO HK1 verifiziert)
+        // Pump supplies flow/head already converted (verified on ALPHA2 GO HK1)
         this->publish_(this->flow_sensor_, geni::be_float(d + 24));  // m3/h
         this->publish_(this->head_sensor_, geni::be_float(d + 28));  // m
       } else if (r.len >= 8) {
-        // Rueckfall fuer kuerzere Antworten: @0 in m3/s, @4 in Pa
+        // Fallback for shorter replies: @0 in m3/s, @4 in Pa
         this->publish_(this->flow_sensor_, geni::be_float(d + 0) * 3600.0f);   // m3/s -> m3/h
-        this->publish_(this->head_sensor_, geni::be_float(d + 4) / 9806.65f);  // Pa -> m Wassersaeule
+        this->publish_(this->head_sensor_, geni::be_float(d + 4) / 9806.65f);  // Pa -> m water column
       }
       if (r.len >= 36) {
         ESP_LOGV(TAG, "565: f0=%g f4=%g f8=%g f12=%g f16=%g f20=%g", geni::be_float(d + 0), geni::be_float(d + 4),
@@ -853,7 +853,7 @@ void GrundfosAlpha2Go::handle_reply_(const geni::Reply &r) {
                  geni::be_float(d + 20), geni::be_float(d + 24), geni::be_float(d + 28), geni::be_float(d + 32));
       }
       break;
-    case geni::TYPE_OPERATION_HISTORY:  // 93/1, v2, 28 Byte
+    case geni::TYPE_OPERATION_HISTORY:  // 93/1, v2, 28 bytes
       ESP_LOGV(TAG, "248: %s", format_hex_pretty(d, r.len).c_str());
       if (r.len >= 12) {
         if (this->starts_sensor_ != nullptr) this->starts_sensor_->publish_state((float) geni::be_u32(d + 0));
@@ -888,7 +888,7 @@ void GrundfosAlpha2Go::handle_reply_(const geni::Reply &r) {
       if (std::isfinite(joule) && joule >= 0) this->publish_(this->energy_sensor_, (float) (joule / 3.6e6));
       break;
     }
-    case geni::TYPE_OPERATION_STATUS: {  // 86/6, 86/7, 86/8 (gleicher Typ -> Zuordnung ueber die Abfrage)
+    case geni::TYPE_OPERATION_STATUS: {  // 86/6, 86/7, 86/8 (same type -> matched via the query)
       if (r.len < 7) break;
       const uint8_t src = d[0], mode = d[1], ctrl = d[2];
       const float sp = geni::be_float(d + 3);
@@ -901,27 +901,27 @@ void GrundfosAlpha2Go::handle_reply_(const geni::Reply &r) {
         this->op_mode_ = mode;
         this->op_ctrl_ = ctrl;
         this->op_sp_ = sp;
-        // AutoAdapt-Sollwerte nicht merken: beim Wechsel zurueck soll der eigene Sollwert gelten
+        // Don't remember AutoAdapt setpoints: switching back should use our own setpoint
         if (kind != SP_UNKNOWN && std::isfinite(sp) && !is_autoadapt(ctrl)) this->last_sp_[kind] = sp;
         this->publish_controls_();
       } else if (req == REQ_OP_PRIO) {
         this->publish_(this->operation_mode_sensor_, mode);
         this->publish_(this->control_mode_sensor_, ctrl);
         this->publish_(this->setpoint_sensor_, sp);
-        // Sensoren mit fester Einheit; gilt die Einheit fuer die aktuelle Regelart nicht, wird NaN gemeldet
+        // Fixed-unit sensors; NaN if the unit doesn't apply to the current control mode
         this->publish_or_nan_(this->setpoint_head_sensor_, kind == SP_PRESSURE ? sp / PA_PER_M : NAN);
         this->publish_or_nan_(this->setpoint_flow_sensor_, kind == SP_FLOW ? sp * 3600.0f : NAN);
         this->publish_or_nan_(this->setpoint_speed_sensor_, kind == SP_SPEED ? sp : NAN);
         auto *om = operation_mode_def(mode);
         auto *cm = control_mode_def(ctrl);
         char buf[24];
-        if (om == nullptr) snprintf(buf, sizeof(buf), "Unbekannt (%u)", mode);
+        if (om == nullptr) snprintf(buf, sizeof(buf), "Unknown (%u)", mode);
         this->publish_text_(this->operation_mode_text_sensor_, om != nullptr ? om->text : buf);
-        if (cm == nullptr) snprintf(buf, sizeof(buf), "Unbekannt (%u)", ctrl);
+        if (cm == nullptr) snprintf(buf, sizeof(buf), "Unknown (%u)", ctrl);
         this->publish_text_(this->control_mode_text_sensor_, cm != nullptr ? cm->text : buf);
       } else if (req == REQ_OP_REALIZED) {
         this->publish_or_nan_(this->setpoint_actual_sensor_, kind == SP_PRESSURE ? sp / PA_PER_M : NAN);
-        // "Nur Pumpe entlueften" erscheint nicht in 88/612, sondern als Steuerquelle AirVenting (111) in 86/8
+        // "Vent pump only" does not appear in 88/612 but as control source AirVenting (111) in 86/8
         this->pump_venting_ = (src == SOURCE_AIR_VENTING);
         this->publish_venting_();
       }

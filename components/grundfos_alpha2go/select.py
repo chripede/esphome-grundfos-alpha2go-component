@@ -11,14 +11,14 @@ GrundfosControlModeSelect = ns.class_(
 
 CONF_CONTROL_MODE = "control_mode"
 
-# Reihenfolge muss zu SELECT_CONTROL_CODES in grundfos_alpha2go.cpp passen: 1, 0, 13, 14, 8, 2
+# Order must match SELECT_CONTROL_CODES in grundfos_alpha2go.cpp: 1, 0, 13, 14, 8, 2
 CONTROL_MODE_OPTIONS = [
-    "Prop. Druck",
-    "Konstantdruck",
-    "Prop. Druck (AutoAdapt)",
-    "Konstantdruck (AutoAdapt)",
-    "Konstanter Förderstrom",
-    "Konstantdrehzahl",
+    "Proportional pressure",
+    "Constant pressure",
+    "Proportional pressure (AutoAdapt)",
+    "Constant pressure (AutoAdapt)",
+    "Constant flow",
+    "Constant speed",
 ]
 
 CONFIG_SCHEMA = cv.Schema(

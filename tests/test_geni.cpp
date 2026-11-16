@@ -1,4 +1,4 @@
-// Test des hardwareunabhaengigen Parsers: g++ -std=c++17 -I../components/grundfos_alpha2go test_geni.cpp && ./a.out
+// Test of the hardware-independent parser: g++ -std=c++17 -I../components/grundfos_alpha2go test_geni.cpp && ./a.out
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -33,7 +33,7 @@ static std::vector<uint8_t> tobytes(const uint8_t *p, size_t n) { return std::ve
 
 int main() {
   uint8_t f[16];
-  // Request-Frames: bytegleich zu ESPHome-alpha3 (ALPHA3-Objekte) und zum Mitschnitt Lasse-source (ALPHA2 GO)
+  // Request frames: byte-identical to ESPHome alpha3 (ALPHA3 objects) and the Lasse-source capture (ALPHA2 GO)
   assert(tobytes(f, build_object_get(f, 93, 289)) == hex("27 07 e7 f8 0a 03 5d 01 21 52 1f"));
   assert(tobytes(f, build_object_get(f, 87, 69)) == hex("27 07 e7 f8 0a 03 57 00 45 8a cd"));
   assert(tobytes(f, build_object_get(f, 93, 290)) == hex("27 07 e7 f8 0a 03 5d 01 22 62 7c"));
@@ -42,7 +42,7 @@ int main() {
   assert(tobytes(f, build_class2_get(f, ids, 3)) == hex("27 07 ff f8 02 03 94 95 96 4f 91"));
   assert(build_object_get(f, 93, 300) == 11 && tobytes(f, 11) == hex("27 07 e7 f8 0a 03 5d 01 2c 83 b2"));
 
-  // Antwort-Kennungen aus dem Mitschnitt: Header-Bytes 5..12
+  // Reply identifiers from the capture: header bytes 5..12
   auto fh = reply(565, 2, std::vector<uint8_t>(36));
   assert(std::vector<uint8_t>(fh.begin() + 5, fh.begin() + 13) == hex("2b 00 02 35 02 00 00 24"));
   auto eh = reply(256, 3, std::vector<uint8_t>(41));
@@ -50,16 +50,16 @@ int main() {
   auto ch = reply(248, 2, std::vector<uint8_t>(28));
   assert(std::vector<uint8_t>(ch.begin() + 5, ch.begin() + 13) == hex("23 00 00 f8 02 00 00 1c"));
 
-  // Reassemblierung mit zerstueckelten Notifications (7/20/1 Byte), Muell davor, kaputter Frame dazwischen
-  // Werte aus dem Hardware-Log (ALPHA2 GO HK1, 15.11.2026): @0 m3/s, @4 Pa, @24 m3/h, @28 m, @32 kv
+  // Reassembly with fragmented notifications (7/20/1 bytes), garbage before, broken frame in between
+  // Values from the hardware log (ALPHA2 GO HK1, 15.11.2026): @0 m3/s, @4 Pa, @24 m3/h, @28 m, @32 kv
   auto flow = reply(565, 2, floats({0.000469495f, 20716.4f, NAN, NAN, NAN, NAN, 1.690f, 2.113f, 3.696f}));
   auto elec = reply(256, 3, floats({235.2f, 324.0f, 0.169f, 37.88f, 38.f, 4542.f, NAN, NAN, 51.0f, 0.f}));
   std::vector<uint8_t> hist(28, 0);
   hist[3] = 6;                                   // starts = 6
   uint32_t op = 31510844; for (int i = 0; i < 4; i++) hist[8 + i] = op >> (24 - 8 * i);
   auto cnt = reply(248, 2, hist);
-  auto bad = flow; bad[20] ^= 0xFF;              // CRC-Fehler
-  std::vector<uint8_t> stream = {0x00, 0x11, 0x22};  // Muell
+  auto bad = flow; bad[20] ^= 0xFF;              // CRC error
+  std::vector<uint8_t> stream = {0x00, 0x11, 0x22};  // garbage
   for (auto *v : {&bad, &flow, &elec, &cnt}) stream.insert(stream.end(), v->begin(), v->end());
 
   for (size_t chunk : {1u, 7u, 20u, 64u}) {
@@ -70,8 +70,8 @@ int main() {
       errs += r.feed(stream.data() + i, std::min(chunk, stream.size() - i), [&](const Reply &rp) {
         if (rp.type == TYPE_PROCESS_VALUES_EXT) {
           n_flow++;
-          q = be_float(rp.data + 24); h = be_float(rp.data + 28);                              // direkt
-          q_calc = be_float(rp.data) * 3600.f; h_calc = be_float(rp.data + 4) / 9806.65f;     // Rueckfall
+          q = be_float(rp.data + 24); h = be_float(rp.data + 28);                              // direct
+          q_calc = be_float(rp.data) * 3600.f; h_calc = be_float(rp.data + 4) / 9806.65f;     // fallback
         }
         if (rp.type == TYPE_MOTOR_DETAILS) { n_elec++; u = be_float(rp.data); p = be_float(rp.data + 12); rpm = be_float(rp.data + 20); aux = be_float(rp.data + 32); }
         if (rp.type == TYPE_OPERATION_HISTORY) { n_cnt++; starts = be_u32(rp.data); hours = be_u32(rp.data + 8) / 3600.f; }
@@ -79,11 +79,11 @@ int main() {
     }
     assert(errs == 1 && n_flow == 1 && n_elec == 1 && n_cnt == 1);
     assert(fabsf(q - 1.690f) < 1e-4 && fabsf(h - 2.113f) < 1e-4);
-    assert(fabsf(q_calc - q) < 1e-3 && fabsf(h_calc - h) < 1e-3);  // Rueckfall-Umrechnung trifft @24/@28
+    assert(fabsf(q_calc - q) < 1e-3 && fabsf(h_calc - h) < 1e-3);  // fallback conversion matches @24/@28
     assert(fabsf(u - 235.2f) < 1e-3 && fabsf(p - 37.88f) < 1e-3 && rpm == 4542.f && aux == 51.0f);
     assert(starts == 6 && fabsf(hours - 8752.97f) < 0.05f);
   }
-  // Echter 87/1-Frame (Typ 232) aus dem Hardware-Log, in drei Notifications wie empfangen
+  // Real 87/1 frame (type 232) from the hardware log, in three notifications as received
   {
     const uint8_t n1[] = {0x24, 0x25, 0xF8, 0xE7, 0x0A, 0x21, 0x00, 0x00, 0xE8, 0x01,
                           0x00, 0x00, 0x1A, 0x41, 0xB0, 0x9F, 0x60, 0x5D, 0xFC, 0x40};
@@ -112,8 +112,8 @@ int main() {
     assert(fabsf(pw - 22.04f) < 0.01f && pumps == 1 && pump_pw == pw && pump_joule == joule);
   }
 
-  // Typ 303 (OperationStatusRequest), echte 86/7-Frames aus dem Hardware-Log:
-  // u8 source, u8 mode, u8 control, float setpoint (SI: Pa bzw. m3/s)
+  // Type 303 (OperationStatusRequest), real 86/7 frames from the hardware log:
+  // u8 source, u8 mode, u8 control, float setpoint (SI: Pa or m3/s)
   {
     struct Case {
       std::vector<uint8_t> frame;
@@ -121,13 +121,13 @@ int main() {
       float sp;
     };
     const Case cases[] = {
-        // Proportionaldruck, Sollwert 24509.8 Pa = 2.50 m
+        // Proportional pressure, setpoint 24509.8 Pa = 2.50 m
         {{0x24, 0x12, 0xF8, 0xE7, 0x0A, 0x0E, 0x00, 0x01, 0x2F, 0x01, 0x00, 0x00,
           0x07, 0x01, 0x00, 0x01, 0x46, 0xBF, 0x7B, 0x9C, 0x64, 0x6D}, 1, 24509.8f},
-        // Konstanter Durchfluss, Sollwert 0.000277778 m3/s = 1.00 m3/h
+        // Constant flow, setpoint 0.000277778 m3/s = 1.00 m3/h
         {{0x24, 0x12, 0xF8, 0xE7, 0x0A, 0x0E, 0x00, 0x01, 0x2F, 0x01, 0x00, 0x00,
           0x07, 0x01, 0x00, 0x08, 0x39, 0x91, 0xA2, 0xB4, 0xCD, 0x98}, 8, 0.000277778f},
-        // Konstantdrehzahl, Sollwert 4059.8 1/min (gemessene Drehzahl 4063-4068)
+        // Constant speed, setpoint 4059.8 1/min (measured speed 4063-4068)
         {{0x24, 0x12, 0xF8, 0xE7, 0x0A, 0x0E, 0x00, 0x01, 0x2F, 0x01, 0x00, 0x00,
           0x07, 0x01, 0x00, 0x02, 0x45, 0x7D, 0xBC, 0xCD, 0x9C, 0xE3}, 2, 4059.8f},
     };
@@ -146,7 +146,7 @@ int main() {
     assert(fabsf(0.000277778f * 3600.0f - 1.0f) < 1e-4f);  // -> setpoint_flow
   }
 
-  // Kurze Antworten (1-8 Byte) der Einstellungs-Objekte: Laengenpruefung im Reassembler (13 + dl + 2 == tot)
+  // Short replies (1-8 bytes) from the settings objects: length check in the reassembler (13 + dl + 2 == tot)
   {
     const struct {
       uint16_t type;
@@ -171,7 +171,7 @@ int main() {
     }
   }
 
-  // SET-Builder gegen das Telegramm, das die Pumpe mit Status 00 angenommen hat (Probe 4, 90/8 = 0)
+  // SET builder against the telegram the pump accepted with status 00 (probe 4, 90/8 = 0)
   {
     const uint8_t off = 0, on = 1;
     uint8_t f[MAX_TX_FRAME + 4];
@@ -183,17 +183,17 @@ int main() {
     assert(n == 18 && f[15] == 0x01 && crc16(f + 1, f[1] + 1) == (uint16_t) ((f[n - 2] << 8) | f[n - 1]));
     uint8_t big[16] = {0};
     assert(build_object_set(f, 1, 1, 1, 1, big, 3) == 20);
-    // 86/6 = aktuelle Werte (src 0, Auto, PP, 24509.8 Pa): 24 Byte -> zwei BLE-Writes
+    // 86/6 = current values (src 0, Auto, PP, 24509.8 Pa): 24 bytes -> two BLE writes
     const uint8_t op[] = {0x00, 0x00, 0x01, 0x46, 0xBF, 0x7B, 0x9C};
     n = build_object_set(f, 86, 6, TYPE_OPERATION_STATUS, 1, op, 7);
     const uint8_t opref[] = {0x27, 0x14, 0xE7, 0xF8, 0x0A, 0x90, 0x56, 0x00, 0x06, 0x01, 0x2F, 0x01,
                              0x00, 0x00, 0x07, 0x00, 0x00, 0x01, 0x46, 0xBF, 0x7B, 0x9C};
     assert(n == 24 && memcmp(f, opref, sizeof(opref)) == 0);
     assert(crc16(f + 1, f[1] + 1) == (uint16_t) ((f[n - 2] << 8) | f[n - 1]));
-    assert(build_object_set(f, 1, 1, 1, 1, big, 16) == 0);  // 33 Byte -> zu lang
+    assert(build_object_set(f, 1, 1, 1, 1, big, 16) == 0);  // 33 bytes -> too long
   }
 
-  // Class-3-Befehl STOP: 27 05 E7 F8 03 81 05 CRC (9 Byte)
+  // Class 3 command STOP: 27 05 E7 F8 03 81 05 CRC (9 bytes)
   {
     uint8_t f[16];
     size_t n = build_command(f, 5);
@@ -202,7 +202,7 @@ int main() {
     assert(crc16(f + 1, f[1] + 1) == (uint16_t) ((f[7] << 8) | f[8]));
   }
 
-  // Roh-APDU: muss mit dem SET- und dem GET-Builder uebereinstimmen; leer/zu lang -> 0
+  // Raw APDU: must match the SET and GET builders; empty/too long -> 0
   {
     uint8_t f[MAX_TX_FRAME + 4], g[MAX_TX_FRAME + 4];
     const uint8_t apdu[] = {0x8A, 0x5A, 0x00, 0x08, 0x01, 0x4D, 0x01, 0x00, 0x00, 0x01, 0x00};
@@ -219,5 +219,5 @@ int main() {
     assert(build_class10_raw(f, big, 26) == 0);
   }
 
-  printf("alle Tests OK\n");
+  printf("all tests OK\n");
 }

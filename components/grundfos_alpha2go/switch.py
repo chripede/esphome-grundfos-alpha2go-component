@@ -13,7 +13,7 @@ CONF_PUMP = "pump"
 CONF_NIGHT_SETBACK = "night_setback"
 CONF_AIR_DETECTION = "air_detection"
 
-# Zustand kommt immer von der Pumpe; beim Booten wird nichts geschrieben
+# State always comes from the pump; nothing is written at boot
 CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(CONF_GRUNDFOS_ALPHA2GO_ID): cv.use_id(GrundfosAlpha2Go),
