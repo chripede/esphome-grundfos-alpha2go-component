@@ -53,6 +53,8 @@ void GrundfosAlpha2Go::dump_config() {
   LOG_SENSOR("  ", "Setpoint flow", this->setpoint_flow_sensor_);
   LOG_SENSOR("  ", "Setpoint speed", this->setpoint_speed_sensor_);
   LOG_SENSOR("  ", "Setpoint actual", this->setpoint_actual_sensor_);
+  LOG_SENSOR("  ", "Setpoint actual speed", this->setpoint_actual_speed_sensor_);
+  LOG_TEXT_SENSOR("  ", "Control source", this->control_source_text_sensor_);
   LOG_TEXT_SENSOR("  ", "Operation mode text", this->operation_mode_text_sensor_);
   LOG_TEXT_SENSOR("  ", "Control mode text", this->control_mode_text_sensor_);
   LOG_SENSOR("  ", "Air detections", this->air_detections_sensor_);
@@ -154,6 +156,18 @@ static const ControlModeDef *control_mode_def(uint8_t v) {
 static const char *control_mode_name(uint8_t v) {
   auto *m = control_mode_def(v);
   return m != nullptr ? m->name : "?";
+}
+// ControlSource (86/6-86/9 @0). 123 seen in 86/8 with external PWM control selected in the GO app
+static const char *control_source_text(uint8_t src) {
+  switch (src) {
+    case 0: return "Not used";
+    case 1: return "Panel / app";
+    case 2: return "Bus";
+    case 104: return "AutoNight";
+    case 111: return "Air venting";
+    case 123: return "External PWM";
+    default: return nullptr;
+  }
 }
 static SetpointKind setpoint_kind(uint8_t ctrl) {
   auto *m = control_mode_def(ctrl);
@@ -358,7 +372,8 @@ void GrundfosAlpha2Go::setup() {
   if (this->operation_mode_sensor_ != nullptr || this->control_mode_sensor_ != nullptr ||
       this->setpoint_sensor_ != nullptr || this->setpoint_head_sensor_ != nullptr ||
       this->setpoint_flow_sensor_ != nullptr || this->setpoint_speed_sensor_ != nullptr ||
-      this->setpoint_actual_sensor_ != nullptr ||
+      this->setpoint_actual_sensor_ != nullptr || this->setpoint_actual_speed_sensor_ != nullptr ||
+      this->control_source_text_sensor_ != nullptr ||
       this->operation_mode_text_sensor_ != nullptr || this->control_mode_text_sensor_ != nullptr)
     this->wanted_mask_ |= REQ_OP_LOCAL | REQ_OP_PRIO | REQ_OP_REALIZED;
   if (this->night_setback_enabled_binary_sensor_ != nullptr) this->wanted_mask_ |= REQ_NIGHT_ENABLE;
@@ -458,6 +473,7 @@ void GrundfosAlpha2Go::publish_all_unknown_() {
                            this->setpoint_flow_sensor_,
                            this->setpoint_speed_sensor_,
                            this->setpoint_actual_sensor_,
+                           this->setpoint_actual_speed_sensor_,
                            this->air_detections_sensor_};
   for (auto *s : all)
     if (s != nullptr) s->publish_state(NAN);
@@ -469,7 +485,7 @@ void GrundfosAlpha2Go::publish_all_unknown_() {
     if (b != nullptr) b->invalidate_state();
 
   text_sensor::TextSensor *texts[] = {this->operation_mode_text_sensor_, this->control_mode_text_sensor_,
-                                      this->venting_status_text_sensor_};
+                                      this->venting_status_text_sensor_, this->control_source_text_sensor_};
   for (auto *t : texts) {
     if (t == nullptr || !t->has_state()) continue;
     t->set_has_state(false);
@@ -921,6 +937,16 @@ void GrundfosAlpha2Go::handle_reply_(const geni::Reply &r) {
         this->publish_text_(this->control_mode_text_sensor_, cm != nullptr ? cm->text : buf);
       } else if (req == REQ_OP_REALIZED) {
         this->publish_or_nan_(this->setpoint_actual_sensor_, kind == SP_PRESSURE ? sp / PA_PER_M : NAN);
+        this->publish_or_nan_(this->setpoint_actual_speed_sensor_, kind == SP_SPEED ? sp : NAN);
+        if (this->control_source_text_sensor_ != nullptr) {
+          char sbuf[24];
+          const char *st = control_source_text(src);
+          if (st == nullptr) {
+            snprintf(sbuf, sizeof(sbuf), "Unknown (%u)", src);
+            st = sbuf;
+          }
+          this->publish_text_(this->control_source_text_sensor_, st);
+        }
         // "Vent pump only" does not appear in 88/612 but as control source AirVenting (111) in 86/8
         this->pump_venting_ = (src == SOURCE_AIR_VENTING);
         this->publish_venting_();

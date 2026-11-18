@@ -54,6 +54,8 @@ class GrundfosAlpha2Go : public ble_client::BLEClientNode, public PollingCompone
   SUB_SENSOR(setpoint_flow)   // 86/7 set_point in m3/h, flow control mode only
   SUB_SENSOR(setpoint_speed)  // 86/7 set_point in 1/min, constant speed only
   SUB_SENSOR(setpoint_actual) // 86/8 current target in m, pressure control modes only
+  SUB_SENSOR(setpoint_actual_speed)  // 86/8 current target in 1/min, when the realised mode is constant speed (e.g. PWM)
+  SUB_TEXT_SENSOR(control_source)    // 86/8 who is in control: panel/app, external PWM, AutoNight, venting ...
   SUB_TEXT_SENSOR(operation_mode)  // operation_mode as text
   SUB_TEXT_SENSOR(control_mode)    // control_mode as text
   SUB_SENSOR(air_detections)       // 88/604 air detections after 168 operating hours

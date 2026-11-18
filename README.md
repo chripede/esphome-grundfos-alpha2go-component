@@ -60,6 +60,8 @@ Readings from the test pump (heating circuit, continuous operation):
 | `setpoint_flow` | m³/h | 86/7 @3 (m³/s × 3600) | 1.00 (constant flow) |
 | `setpoint_speed` | rpm | 86/7 @3 | 4060 (constant speed) |
 | `setpoint_actual` | m | 86/8 @3 (Pa ÷ 9806.65) | 2.09–2.11 (point on the curve) |
+| `setpoint_actual_speed` | rpm | 86/8 @3 when realised mode is constant speed | 2455 (external PWM) |
+| `control_source` | text | 86/8 @0 | "Panel / app", "External PWM" (123), "AutoNight", "Air venting" |
 | `setpoint` | raw SI | 86/7 @3 | 24 509.8 Pa / 0.000278 m³/s |
 | `night_setback_enabled` | binary | 90/8 @0 | off (as in the app) |
 | `night_mode` | binary | 90/7 @0 (currently in night mode) | off |

@@ -52,6 +52,8 @@ CONF_SETPOINT_HEAD = "setpoint_head"
 CONF_SETPOINT_FLOW = "setpoint_flow"
 CONF_SETPOINT_SPEED = "setpoint_speed"
 CONF_SETPOINT_ACTUAL = "setpoint_actual"
+CONF_SETPOINT_ACTUAL_SPEED = "setpoint_actual_speed"
+CONF_CONTROL_SOURCE = "control_source"
 CONF_OPERATION_MODE_TEXT = "operation_mode_text"
 CONF_CONTROL_MODE_TEXT = "control_mode_text"
 CONF_AIR_DETECTIONS = "air_detections"
@@ -200,6 +202,18 @@ CONFIG_SCHEMA = (
                 state_class=STATE_CLASS_MEASUREMENT,
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
+            # Current speed target (86/8) when the realised mode is constant speed, e.g. under external PWM
+            cv.Optional(CONF_SETPOINT_ACTUAL_SPEED): sensor.sensor_schema(
+                unit_of_measurement=UNIT_REVOLUTIONS_PER_MINUTE,
+                accuracy_decimals=0,
+                icon="mdi:target-variant",
+                state_class=STATE_CLASS_MEASUREMENT,
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+            ),
+            # Who is actually in control (86/8 source): panel/app, external PWM, AutoNight, venting
+            cv.Optional(CONF_CONTROL_SOURCE): text_sensor.text_sensor_schema(
+                icon="mdi:source-branch",
+            ),
             cv.Optional(CONF_OPERATION_MODE_TEXT): text_sensor.text_sensor_schema(
                 icon="mdi:state-machine",
             ),
@@ -271,6 +285,10 @@ async def to_code(config):
     await sensors(CONF_SETPOINT_FLOW, var.set_setpoint_flow_sensor)
     await sensors(CONF_SETPOINT_SPEED, var.set_setpoint_speed_sensor)
     await sensors(CONF_SETPOINT_ACTUAL, var.set_setpoint_actual_sensor)
+    await sensors(CONF_SETPOINT_ACTUAL_SPEED, var.set_setpoint_actual_speed_sensor)
+    if conf := config.get(CONF_CONTROL_SOURCE):
+        ts = await text_sensor.new_text_sensor(conf)
+        cg.add(var.set_control_source_text_sensor(ts))
 
     if conf := config.get(CONF_OPERATION_MODE_TEXT):
         ts = await text_sensor.new_text_sensor(conf)
