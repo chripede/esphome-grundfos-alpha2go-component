@@ -157,7 +157,10 @@ static const char *control_mode_name(uint8_t v) {
   auto *m = control_mode_def(v);
   return m != nullptr ? m->name : "?";
 }
-// ControlSource (86/6-86/9 @0). 123 seen in 86/8 with external PWM control selected in the GO app
+// ControlSource (86/6-86/9 @0). 0/1/2/104 named in the GENI profile (per upstream README); 111 observed upstream
+// during "vent pump only". 123 observed on a 25-75 with external PWM selected in the GO app: the 86/8 speed
+// setpoint followed every PWM change (84 % duty -> 1650, 61 % -> 2742, 46 % -> 3494, 10 % -> 5214 rpm).
+// The profile's own name for 123 is unconfirmed.
 static const char *control_source_text(uint8_t src) {
   switch (src) {
     case 0: return "Not used";
