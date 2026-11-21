@@ -1,4 +1,6 @@
 #include "grundfos_alpha2go.h"
+#include <cstring>
+#include <string>
 #include "esphome/core/log.h"
 #include "esphome/components/esp32_ble/ble.h"
 #include <esp_task_wdt.h>
@@ -15,6 +17,15 @@ namespace esphome {
 namespace grundfos_alpha2go {
 
 static const char *const TAG = "grundfos_alpha2go";
+
+// Hex dump for logs. ESPHome 2026.11 removed the std::string format_hex_pretty(); format_hex_pretty_to()
+// exists in 2026.10 and later, so this builds on both.
+static std::string hex_str_(const uint8_t *data, size_t len) {
+  std::string out(len * 3 + 1, '\0');
+  format_hex_pretty_to(&out[0], out.size(), data, len, '.');
+  out.resize(std::strlen(out.c_str()));
+  return out;
+}
 
 static const uint32_t ENC_TIMEOUT_MS = 1500;    // wait this long for AUTH_CMPL, then continue anyway
 static const uint32_t CCCD_TIMEOUT_MS = 2000;
@@ -223,7 +234,7 @@ void GrundfosAlpha2Go::finish_write_(const char *why) {
 // Check reply: Class 3 -> APDU ACK (top 2 bits) must be 0; Class 10 -> status byte must also be 0
 void GrundfosAlpha2Go::check_write_reply_(const uint8_t *d, size_t n) {
   if (n < 6 || d[0] != geni::SD_REPLY) {
-    ESP_LOGW(TAG, "%s: unexpected reply %s", this->write_label_, format_hex_pretty(d, n).c_str());
+    ESP_LOGW(TAG, "%s: unexpected reply %s", this->write_label_, hex_str_(d, n).c_str());
     return;
   }
   const uint8_t cls = d[4], hdr = d[5], ack = hdr >> 6;
@@ -234,7 +245,7 @@ void GrundfosAlpha2Go::check_write_reply_(const uint8_t *d, size_t n) {
     // ACK 1/2/3: unknown class / unknown ID / operation not allowed;
     // status 1: unknown operation, 4: object/type not found
     ESP_LOGE(TAG, "%s: rejected by pump (class %u, ack %u, status %u): %s", this->write_label_, cls, ack, status,
-             format_hex_pretty(d, n).c_str());
+             hex_str_(d, n).c_str());
   }
 }
 
@@ -667,7 +678,7 @@ void GrundfosAlpha2Go::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_
         this->finish_write_("reply received");
       } else if (this->inflight_ && (this->last_req_ & REQ_DIAG_MASK))  // including replies the parser discards
         ESP_LOGV(TAG, "%s raw RX: %s", req_name_(this->last_req_),
-                 format_hex_pretty(param->notify.value, param->notify.value_len).c_str());
+                 hex_str_(param->notify.value, param->notify.value_len).c_str());
       int crc_errors = this->rx_.feed(param->notify.value, param->notify.value_len,
                                       [this](const geni::Reply &r) { this->handle_reply_(r); });
       if (crc_errors > 0) ESP_LOGW(TAG, "%d GENI frame(s) dropped: CRC error", crc_errors);
@@ -718,7 +729,7 @@ void GrundfosAlpha2Go::send_next_request_() {
     this->pending_mask_ &= ~r.bit;
     uint8_t f[16];
     size_t n = geni::build_object_get(f, r.obj, r.sub);
-    ESP_LOGVV(TAG, "TX %s: %s", r.name, format_hex_pretty(f, n).c_str());
+    ESP_LOGVV(TAG, "TX %s: %s", r.name, hex_str_(f, n).c_str());
     this->last_req_ = r.bit;
     this->inflight_ = true;
     this->send_frame_(f, n);
@@ -809,7 +820,7 @@ void GrundfosAlpha2Go::loop() {
         this->write_head_ = (this->write_head_ + 1) % WRITE_QUEUE;
         this->write_count_--;
         this->write_label_ = w.label;
-        ESP_LOGD(TAG, "%s: TX %s", w.label, format_hex_pretty(w.buf, w.len).c_str());
+        ESP_LOGD(TAG, "%s: TX %s", w.label, hex_str_(w.buf, w.len).c_str());
         this->last_req_ = REQ_WRITE;
         this->inflight_ = true;
         this->send_frame_(w.buf, w.len);
@@ -873,7 +884,7 @@ void GrundfosAlpha2Go::handle_reply_(const geni::Reply &r) {
       }
       break;
     case geni::TYPE_OPERATION_HISTORY:  // 93/1, v2, 28 bytes
-      ESP_LOGV(TAG, "248: %s", format_hex_pretty(d, r.len).c_str());
+      ESP_LOGV(TAG, "248: %s", hex_str_(d, r.len).c_str());
       if (r.len >= 12) {
         if (this->starts_sensor_ != nullptr) this->starts_sensor_->publish_state((float) geni::be_u32(d + 0));
         if (this->operating_hours_sensor_ != nullptr)
@@ -883,7 +894,7 @@ void GrundfosAlpha2Go::handle_reply_(const geni::Reply &r) {
         this->power_on_hours_sensor_->publish_state((float) geni::be_u32(d + 24) / 3600.0f);
       break;
     case geni::TYPE_MEDIA_TEMPERATURE:  // 93/300
-      ESP_LOGV(TAG, "534: %s", format_hex_pretty(d, r.len).c_str());
+      ESP_LOGV(TAG, "534: %s", hex_str_(d, r.len).c_str());
       if (r.len >= 12) {
         ESP_LOGV(TAG, "534: f0=%g f4=%g f8=%g", geni::be_float(d + 0), geni::be_float(d + 4), geni::be_float(d + 8));
       }
@@ -990,7 +1001,7 @@ void GrundfosAlpha2Go::handle_reply_(const geni::Reply &r) {
     }
     default:
       ESP_LOGD(TAG, "Unknown reply type %u (version %u, %u bytes): %s", r.type, r.version, r.len,
-               format_hex_pretty(d, r.len).c_str());
+               hex_str_(d, r.len).c_str());
       break;
   }
 }
