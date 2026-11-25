@@ -503,7 +503,7 @@ void GrundfosAlpha2Go::publish_all_unknown_() {
   for (auto *t : texts) {
     if (t == nullptr || !t->has_state()) continue;
     t->set_has_state(false);
-#ifdef USE_CONTROLLER_REGISTRY
+#if 0 //  USE_CONTROLLER_REGISTRY
     ControllerRegistry::notify_text_sensor_update(t);
 #endif
   }
@@ -514,7 +514,7 @@ void GrundfosAlpha2Go::publish_all_unknown_() {
 
   if (this->control_mode_select_ != nullptr && this->control_mode_select_->has_state()) {
     this->control_mode_select_->set_has_state(false);
-#ifdef USE_CONTROLLER_REGISTRY
+#if 0 // def USE_CONTROLLER_REGISTRY
     ControllerRegistry::notify_select_update(this->control_mode_select_);
 #endif
   }
@@ -522,7 +522,7 @@ void GrundfosAlpha2Go::publish_all_unknown_() {
   for (auto *n : numbers) {
     if (n == nullptr || !n->has_state()) continue;
     n->set_has_state(false);
-#ifdef USE_CONTROLLER_REGISTRY
+#if 0 // def USE_CONTROLLER_REGISTRY
     ControllerRegistry::notify_number_update(n);
 #endif
   }
@@ -532,7 +532,7 @@ void GrundfosSwitch::invalidate() {
   if (!this->has_state()) return;
   this->publish_dedup_.next_unknown();  // otherwise the same state would be dropped after reconnecting
   this->set_has_state(false);
-#ifdef USE_CONTROLLER_REGISTRY
+#if 0 // def USE_CONTROLLER_REGISTRY
   ControllerRegistry::notify_switch_update(this);
 #endif
 }
